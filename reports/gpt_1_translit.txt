@@ -1,0 +1,186 @@
+Sveilze izzslYz: `curl -IL http://devbest.pro:8081/admin/` mlfdYYlks E YYkdzzYrzfY yYUvyYdlf `302 Location: /admin/` v iYUYYl zY evevlY 50 iYyYozUzE. Hlz yzEzz lz, dYd `curl` kYYs EYUAl: iyv `-L` zz keYUmYl yYUvyYdlYe (iz mezerYzvc Uz 50 yYb) v EfEYevEYYlks k zsvYdzg 47, Ykev iYles zY bYdYzrvEYYlks. ([MDN Web Docs][1])
+
+NvaY — dzyzldYs UvYYzzklvdY v kyYbm yYYzrYY vkiyYEeYzvY.
+
+---
+
+## PzrYem zYyYbzEYeYkh iYles (iz dzznvYm)
+
+V EYsYe `nginx.conf` Ues YUevzdv:
+
+```nginx
+location = /admin  { return 301 /admin/; }   # clz lyzYYYl TOLSKO /admin YYb keYsY
+location /admin/ {
+  proxy_pass http://react_admin/;            # <-- lml EYaYz bYEYysYctvg /
+  proxy_redirect http://react_admin:5173/ /admin/;
+  proxy_redirect http://react_admin/ /admin/;
+  ...
+}
+```
+
+* PyYEvez `= /admin` UYAl **301**, zz E ezYY `curl` **zYl zv zUzzYz 301**, bzYrvl YYkdzzYrzfg yYUvyYdl iyvozUvl **zY zlkcUY**. ([MDN Web Docs][2])
+* Vzmlyv `location /admin/` Ef iyzdkvymYlY zY `react_admin:5173` v **iYyYivkfEYYlY Location bYYzezEdv** zl YiklyveY E `/admin/` k izezthc `proxy_redirect`. Ekev Yiklyve (Vite/React Admin dev-kYyEYy) zlEYrYYl yYUvyYdlze zY `/` vev zY `http://react_admin:5173/`, NGINX iYyYivkfEYYl clz E `/admin/`, devYzl kzzEY bYiyYsvEYYl `/admin/` — v pvde izElzysYlks. Hlz dYd yYb lz, rlz UYeYYl `proxy_redirect`: eYzsYl `Location`/`Refresh` E zlEYlYo YiklyveY. ([Nginx][3])
+
+DzizezvlYehzz, vb-bY bYEYysYctYYz keYsY E `proxy_pass http://react_admin/;` NGINX **kyYbYYl iyYnvdk `/admin/`** iYyYU zliyYEdzg zY Yiklyve (l.Y. `/admin/x` iyYEyYtYYlks E `/x` Ues YiklyveY). Hlz slYlzYs ezYvdY NGINX iyv `proxy_pass` **k URI**. BYb bYEYysYctYYz keYsY (`proxy_pass http://react_admin;`) vkozUzfg URI iYyYUYAlks **dYd Yklh**. ([Nginx][3])
+
+> RYbceY YvizlYbf (iyzEYysYeYs): Yiklyve zlUYAl yYUvyYdl (zYiyveYy zY `/`), `proxy_redirect` iyYEyYtYYl YYz E `/admin/`, devYzl EzbEyYtYYlks zY `/admin/` v EkA izElzysYlks.
+
+---
+
+## KYd Yfklyz izUlEYyUvlh iyvrvzm (2 dzeYzUf)
+
+1. VyYeYzzz zldecrvlh iYyYivkfEYzvY yYUvyYdlzE v izkezlyYlh «kfyzg» `Location` vb YiklyveY:
+
+```nginx
+location /admin/ {
+  proxy_pass http://react_admin/;
+  proxy_redirect off;  # EyYeYzzz
+}
+```
+
+PYyYbYYymbvlh NGINX v kzzEY: `curl -IL http://devbest.pro:8081/admin/` — Ef Uzeazf mEvUYlh vkozUzfg `Location` (kdzyYY EkYYz `/` vev `http://react_admin:5173/`). IeYzzz lYd yYYzlYYl `proxy_redirect off;`. ([Nginx][3])
+
+2. PzkezlyYlh iysezg zlEYl YiklyveY vb dzzlYgzYyY (YYb NGINX):
+
+```bash
+docker exec -it <nginx_container> curl -sIL http://react-admin:5173/ -H 'Host: devbest.pro'
+docker exec -it <nginx_container> curl -sIL http://react-admin:5173/admin/ -H 'Host: devbest.pro'
+```
+
+Ekev lYe `302` zY `/` vev zY YYkzeclzfg URL — clz v Yklh vklzrzvd. (SYe nYdl lzYz, rlz `302` — clz EyYeYzzfg yYUvyYdl k mdYbYzvYe zzEzYz URL E `Location`, zivkYz E kiYpvnvdYpvv/MDN.) ([MDN Web Docs][1])
+
+---
+
+## IkiyYEeYzvY (yYdzeYzUmYefg EYyvYzl)
+
+SUYeYglY nyzzlYzU UYgklEvlYehzz «avlh» izU izU-imlAe `/admin/`, Y NGINX iYyYklYzYl rlz-evYz «eYYvrYkdv» iYyYivkfEYlh:
+
+### 1) React-Admin / React Router: UzYYEvlh basename `/admin`
+
+Ekev Ef vkizehbmYlY dYklzezfg yzmlYy (zY EklyzYzzfg HashRouter iz mezerYzvc), bYUYglY YYbzEfg imlh:
+
+```tsx
+import { RouterProvider, createBrowserRouter } from 'react-router-dom';
+import { Admin, Resource } from 'react-admin';
+
+const router = createBrowserRouter(
+  [{
+    path: '*',
+    element: (
+      <Admin dataProvider={...}>
+        <Resource name="posts" />
+      </Admin>
+    ),
+  }],
+  { basename: '/admin' },
+);
+
+export default () => <RouterProvider router={router} />;
+```
+
+DzdmeYzlYpvs React-Admin iysez iyz clz: «Ekev YUevzdY kYyEvlks k izUimlv I Ef vkizehbmYlY UymYzg Router, bYUYglY `basename`, rlzYf EkY kkfedv EdecrYev izU-imlh `/admin`». TYe aY Yklh iyveYy k `<Admin basename="/admin">` iyv EklyYvEYzvv E yzUvlYehkdzY iyvezaYzvY. ([marmelab.com][4])
+
+### 2) Vite: EfklYEvlh `base: '/admin/'`
+
+V `vite.config.ts/js`:
+
+```ts
+import { defineConfig } from 'vite';
+export default defineConfig({
+  base: '/admin/',  // v E dev, v E prod
+});
+```
+
+`base` — clz **imYevrzfg YYbzEfg imlh** dYd E UYEY, lYd v E iyzUY; EkY kkfedv zY YkkYlf YmUml iYyYivkYzf k mrAlze clzYz YYbzEzYz imlv. ([vitejs][5])
+
+### 3) NGINX: iYyYklYlh kyYbYlh iyYnvdk v Efdecrvlh iYyYivkfEYzvY yYUvyYdlzE
+
+ZYeYzvlh EYs Yezd YUevzdv zY:
+
+```nginx
+location = /admin { return 301 /admin/; }
+
+location /admin/ {
+  # VAZNO: YYb bYEYysYctYYz "/" — lzYUY Yiklyve mEvUvl vkozUzfg URI c /admin/ pYevdze
+  proxy_pass http://react_admin;
+
+  proxy_redirect off;          # zY iYyYivkfEYYe Location — YYbzEfg imlh maY mrlAz nyzzlze
+  proxy_set_header Host $host; # klYzUYylzfY bYYzezEdv
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+
+  # Ykev E dev zmaYz HMR iz WebSocket, iyzdvzhlY YiYyYgU (zY zYsbYlYeYz Ues nvdkY yYUvyYdlzE):
+  proxy_http_version 1.1;
+  proxy_set_header Upgrade $http_upgrade;
+  proxy_set_header Connection "upgrade";
+}
+```
+
+PzrYem clz yYYzlYYl:
+
+* BYb bYEYysYctYYz keYsY m `proxy_pass` NGINX **zY** bYeYzsYl iyYnvdk — URI mozUvl E Yiklyve dYd Yklh (k `/admin/`). Hlz znvpvYehzYs kYeYzlvdY `proxy_pass`. ([Nginx][3])
+* `proxy_redirect off` YYyYzlvymYl, rlz ef **zY** iyYEyYlve EzbezazfY yYUvyYdlf YiklyveY Ez EzmlyYzzvg `/admin/`-ivzY-izzY. ([Nginx][3])
+* TYd dYd `base` v `basename` bYUYzf, iYyYivkfEYlh HTML rYyYb `sub_filter` YzehsY zY zmazz. K kezEm, kYe ezUmeh `ngx_http_sub_module` «iz mezerYzvc zY kzYvyYYlks» — vkizehbzEYlh YYz klzvl evsh iyv zklyzg zYzYozUvezklv. (PzUlEYyUvlh, EdecrAz ev zz E EYsYe zYyYbY, zY ezYm YYb UzklmiY d ezYm `nginx -V`.) ([Nginx][6])
+
+---
+
+## AehlYyzYlvEY (EyYeYzzfg zYozUzzg imlh)
+
+Ekev iz dYdve-lz iyvrvzYe Ef **zY YzlzEf** kYgrYk eYzslh nyzzl (zklYEesYlY `base` iz mezerYzvc `/`), ezazz iyzdkvyzEYlh lYd, rlzYf NGINX kzveYe `/admin` iYyYU zlUYrYg E Yiklyve v UzYYEese YYz zYbYU E yYUvyYdlYo:
+
+```nginx
+location = /admin { return 301 /admin/; }
+
+location /admin/ {
+  # kzslh iyYnvdk /admin/ iYyYU zliyYEdzg d Yiklyvem
+  rewrite ^/admin/(.*)$ /$1 break;
+  proxy_pass http://react_admin/;     # bUYkh dYd yYb NUZEN bYEYysYctvg "/"
+
+  # iYyYivkYlh zlzzkvlYehzfY Location zYbYU izU /admin/
+  proxy_redirect / /admin/;
+
+  proxy_set_header Host $host;
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+
+`proxy_redirect / /admin/;` — slYlzfg kizkzY iYyYivkYlh zlzzkvlYehzfY `Location` zl YiklyveY, UzYYEvE iyYnvdk. Nz clz veYzzz «dzklfeh», emrsY EkA-lYdv zYklyzvlh `base`/`basename` zY nyzzlY. ([Nginx][3])
+
+---
+
+## KYd iyzEYyvlh, rlz EkA izrvzvezkh
+
+PzkeY iyYEzd v reload’Y NGINX:
+
+```bash
+curl -IL http://devbest.pro:8081/admin/ | sed -n '1,12p'
+```
+
+Vf Uzeazf mEvUYlh evYz iysezg `200 OK`, evYz zYyYzvrYzzzY rvkez yYUvyYdlzE (zYiyveYy zUvz — kz /admin zY /admin/), zz **lzrzz zY UYksldv**. NYizezc: `curl -L` iz mezerYzvc iyYdyYtYYl keYUzEYlh yYUvyYdlYe izkeY 50 iYyYozUzE. ([curl.se][7])
+
+---
+
+### Skfedv, zY dzlzyfo zkzzEYzf yYdzeYzUYpvv
+
+* Clz lYdzY `302` v dYd yYYzlYYl `Location` — MDN. ([MDN Web Docs][1])
+* Lvevl yYUvyYdlzE `curl` (`--max-redirs`, iz mezerYzvc 50) — znvpvYehzYs man-klyYzvpY. ([curl.se][7])
+* SYeYzlvdY `proxy_pass` k/YYb bYEYysYctYYz `/` — znvpvYehzYs UzdmeYzlYpvs NGINX (`ngx_http_proxy_module`). ([Nginx][3])
+* Clz UYeYYl `proxy_redirect` (v dYd YYz zldecrvlh) — znvpvYehzYs UzdmeYzlYpvs NGINX. ([Nginx][3])
+* MzUmeh `sub_filter` v lz, rlz zz zY EdecrAz iz mezerYzvc — znvpvYehzYs UzdmeYzlYpvs NGINX (`ngx_http_sub_module`). ([Nginx][6])
+* React-Admin: dYd iyYEvehzz yYYzlYlh izU izUimlAe v YUY mdYbfEYlh `basename`. ([marmelab.com][4])
+* Vite: zipvs `base` — YYbzEfg imYevrzfg imlh E dev v prod (v CLI `--base`). ([vitejs][5])
+
+---
+
+Ekev bYozrYlks, UzYYEec evzveYehzfg iYlr d EYsYem `nginx.conf` pYevdze v iyzEYyzrzfg rYd-evkl Ues `docker compose` (dYdvY izylf iyzYyzsYzf, YUY ezYvzvlYkh E GHCR v l.i.).
+
+[1]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status/302?utm_source=chatgpt.com "302 Found - HTTP - MDN - Mozilla"
+[2]: https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status?utm_source=chatgpt.com "HTTP response status codes - MDN - Mozilla"
+[3]: https://nginx.org/en/docs/http/ngx_http_proxy_module.html "Module ngx_http_proxy_module"
+[4]: https://marmelab.com/react-admin/Routing.html "React-admin - Routing in React-Admin Apps"
+[5]: https://vite.dev/config/shared-options?utm_source=chatgpt.com "Shared Options"
+[6]: https://nginx.org/en/docs/http/ngx_http_sub_module.html?utm_source=chatgpt.com "Module ngx_http_sub_module"
+[7]: https://curl.se/docs/manpage.html?utm_source=chatgpt.com "curl man page"

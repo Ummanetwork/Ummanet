@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: shariat_postgres
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks: [shariat]
+    ports:
+      - "15432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: shariat_redis
+    networks: [shariat]
+    ports:
+      - "16379:6379"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: shariat_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - POSTGRES_DSN=postgresql+psycopg://postgres:postgres@postgres:5432/postgres
+      - BACKEND_CORS_ORIGINS=["*"]
+      - BACKEND_ADMIN_EMAIL=admin@example.com
+      - BACKEND_ADMIN_USERNAME=vit
+      - BACKEND_ADMIN_PASSWORD=123456
+      - BACKEND_ADMIN_IDS=394244504
+      - BACKEND_OTP_BOT_TOKEN=${BOT_TOKEN}
+      - BACKEND_DEFAULT_LANGUAGES=ru,en,ar,tr
+      - BACKEND_DEFAULT_LANGUAGE=ru
+      # Reuse bot AI credentials for backend
+      - BACKEND_AI_API_KEY=${AI_API_KEY}
+      - BACKEND_AI_BASE_URL=${AI_BASE_URL}
+      - BACKEND_AI_MODEL=${AI_MODEL}
+    depends_on: [postgres]
+    networks: [shariat]
+
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    container_name: shariat_bot
+    environment:
+      - ENV_FOR_DYNACONF=development
+      - POSTGRES_DB=postgres
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES__HOST=postgres
+      - POSTGRES__PORT=5432
+      - BACKEND__BASE_URL=http://backend:8000
+      - BACKEND__ADMIN_EMAIL=admin@example.com
+      - BACKEND__ADMIN_PASSWORD=123456
+      - FEATURES__ENABLE_NATS=false
+      - FEATURES__ENABLE_TASKIQ=false
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - BOT_TOKEN=${BOT_TOKEN}
+      - BOT_USE_WEBHOOKS=false
+    depends_on: [postgres, redis]
+    networks: [shariat]
+
+  react-admin:
+    build: ./frontends/react-admin
+    container_name: shariat_react_admin
+    environment:
+      - VITE_API_URL=/api
+    networks: [shariat]
+
+  vue-portal:
+    build: ./frontends/vue-portal
+    container_name: shariat_vue_portal
+    environment:
+      - VITE_API_URL=/api
+    networks: [shariat]
+
+  nginx:
+    image: ghcr.io/s-typy/shariat-nginx:dev-latest
+    depends_on: [backend, bot, react-admin, vue-portal]
+    ports:
+      - "8081:80"
+    networks: [shariat]
+
+networks:
+  shariat:
+
+volumes:
+  pgdata:

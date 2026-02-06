@@ -1,0 +1,94 @@
+[default]
+    LEVEL_NAME = "DEBUG"
+    BOT_VERSION = "0.1.9"
+
+    [default.backend]
+        BASE_URL = "http://backend:8000"
+        ADMIN_EMAIL = "admin@example.com"
+        ADMIN_PASSWORD = "admin123"
+
+    [default.features]
+        ENABLE_NATS = true
+        ENABLE_TASKIQ = true
+
+    [default.bot]
+        SHARIAH_TOP_COUNTRIES = [
+            "Россия",
+            "Казахстан",
+            "Узбекистан",
+            "Кыргызстан",
+            "Таджикистан",
+            "Турция",
+            "Саудовская Аравия",
+            "ОАЭ",
+            "Египет",
+            "Индонезия",
+        ]
+        SHARIAH_EXPERIENCE_MAX = 400
+        ADMIN_PANEL_URL = "http://localhost:5173"
+
+[development]
+
+    [development.backend]
+        BASE_URL = "http://backend:8000"
+        ADMIN_EMAIL = "admin@example.com"
+        ADMIN_PASSWORD = "admin123"
+
+    [development.logs]
+        LEVEL_NAME = "DEBUG"
+        FORMAT = "[%(asctime)s] #%(levelname)-8s %(filename)s:%(lineno)d - %(name)s - %(message)s"
+
+    [development.i18n]
+        default_locale = "ru"
+        locales = ["ru", "en", "ar", "de", "tr"]
+
+    [development.bot]
+        PARSE_MODE = "HTML"
+        SCHOLARS_GROUP_ID = 0
+        AI_BASE_URL = "https://api.fireworks.ai/inference/v1"
+        AI_MODEL = "accounts/fireworks/models/deepseek-r1"
+        # Optional: links for "Мои суды" -> chat redirects
+        COURTS_OPENED_CHAT_URL = "https://t.me/Sharia_Men_Chat"
+        COURTS_CLOSED_CHAT_URL = "https://t.me/Sharia_Men_Chat"
+        COURTS_IN_PROGRESS_CHAT_URL = "https://t.me/Sharia_Men_Chat"
+        SHARIAH_TOP_COUNTRIES = [
+            "Россия",
+            "Казахстан",
+            "Узбекистан",
+            "Кыргызстан",
+            "Таджикистан",
+            "Турция",
+            "Саудовская Аравия",
+            "ОАЭ",
+            "Египет",
+            "Индонезия",
+        ]
+        SHARIAH_EXPERIENCE_MAX = 400
+        ADMIN_PANEL_URL = "http://localhost:5173"
+
+    [development.postgres]
+        NAME = "postgres"
+        HOST = "127.0.0.1"
+        PORT = 5466
+        USER = "postgres"
+        PASSWORD = "postgres"
+
+    [development.redis]
+        HOST = "localhost"
+        PORT = 6379
+        DATABASE = 2
+        USERNAME = "default"
+        PASSWORD = "default"
+
+    [development.nats]
+        SERVERS = ["nats://localhost:4222"]
+        DELAYED_CONSUMER_SUBJECT = "aiogram.delayed.messages"
+        DELAYED_CONSUMER_STREAM = "delayed_messages_aiogram"
+        DELAYED_CONSUMER_DURABLE_NAME = "delayed_messages_consumer"
+
+    [development.cache]
+        USE_CACHE = false
+
+    [development.features]
+        ENABLE_NATS = false
+        ENABLE_TASKIQ = false

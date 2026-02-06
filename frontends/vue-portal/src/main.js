@@ -1,0 +1,1 @@
+import {createApp} from 'vue';createApp({template:`<div>Portal</div>`}).mount('#app');
