@@ -84,7 +84,7 @@ services:
     networks: [shariat]
 
   nginx:
-    image: ghcr.io/s-typy/shariat-nginx:dev-latest
+    image: ghcr.io/Ummanetwork/shariat-nginx:dev-latest
     depends_on: [backend, bot, react-admin, vue-portal]
     ports:
       - "8081:80"
