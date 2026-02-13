@@ -7,3 +7,4 @@
 - `docs/ТЗ/INHERITANCE_RU.md` — наследство.
 - `docs/ТЗ/NIKAH_RU.md` — никах.
 - `docs/ТЗ/SPOUSE_SEARCH_RU.md` — поиск супруга.
+нглш
