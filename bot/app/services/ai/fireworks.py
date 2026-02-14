@@ -1,5 +1,6 @@
 import logging
 import re
+import asyncio
 from functools import lru_cache
 from typing import Optional
 
@@ -9,6 +10,9 @@ from app.services.i18n.localization import get_text, resolve_language
 from config.config import settings
 
 logger = logging.getLogger(__name__)
+_RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
+_MAX_RETRIES = 3
+_RETRY_BASE_DELAY_SECONDS = 2.0
 
 
 @lru_cache(maxsize=1)
@@ -55,28 +59,66 @@ async def generate_ai_response(message: str, lang_code: Optional[str] = None) ->
     model = model or "accounts/fireworks/models/deepseek-r1-0528"
 
     try:
-        response = await client.post(
-            "/chat/completions",
-            json={
-                "model": model,
-                "messages": [
-                    {"role": "system", "content": _system_prompt(lang)},
-                    {"role": "user", "content": message},
-                ],
-            },
-        )
-        response.raise_for_status()
-        payload = response.json()
-        choices = payload.get("choices") or []
-        content = ""
-        if choices:
-            message_payload = choices[0].get("message") or {}
-            content = message_payload.get("content") or ""
-        if not content:
-            return get_text("ai.error.empty", lang)
+        last_exc: Exception | None = None
+        for attempt in range(1, _MAX_RETRIES + 1):
+            try:
+                response = await client.post(
+                    "/chat/completions",
+                    json={
+                        "model": model,
+                        "messages": [
+                            {"role": "system", "content": _system_prompt(lang)},
+                            {"role": "user", "content": message},
+                        ],
+                    },
+                )
+                response.raise_for_status()
+                payload = response.json()
+                choices = payload.get("choices") or []
+                content = ""
+                if choices:
+                    message_payload = choices[0].get("message") or {}
+                    content = message_payload.get("content") or ""
+                if not content:
+                    return get_text("ai.error.empty", lang)
 
-        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
-        return content or get_text("ai.error.empty.trimmed", lang)
+                content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
+                return content or get_text("ai.error.empty.trimmed", lang)
+            except httpx.HTTPStatusError as exc:
+                last_exc = exc
+                status_code = exc.response.status_code
+                body_text = exc.response.text or ""
+                retryable = (
+                    status_code in _RETRYABLE_STATUSES
+                    or "DEPLOYMENT_SCALING_UP" in body_text
+                )
+                if not retryable or attempt >= _MAX_RETRIES:
+                    raise
+                delay = _RETRY_BASE_DELAY_SECONDS * attempt
+                logger.warning(
+                    "AI provider returned %s (attempt %s/%s), retrying in %.1fs",
+                    status_code,
+                    attempt,
+                    _MAX_RETRIES,
+                    delay,
+                )
+                await asyncio.sleep(delay)
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= _MAX_RETRIES:
+                    raise
+                delay = _RETRY_BASE_DELAY_SECONDS * attempt
+                logger.warning(
+                    "AI request failed on attempt %s/%s, retrying in %.1fs: %r",
+                    attempt,
+                    _MAX_RETRIES,
+                    delay,
+                    exc,
+                )
+                await asyncio.sleep(delay)
+        if last_exc is not None:
+            raise last_exc
+        return get_text("ai.error.generic", lang)
     except Exception as exc:
         logger.exception("Failed to generate AI response")
         detail = getattr(exc, "message", None) or getattr(exc, "body", None)
