@@ -4,9 +4,9 @@ services:
     container_name: shariat_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: postgres
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks: [shariat]
@@ -35,7 +35,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - POSTGRES_DSN=postgresql+psycopg://postgres:postgres@postgres:5432/postgres
+      - POSTGRES_DSN=postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postgres}
       - BACKEND_CORS_ORIGINS=["*"]
       - BACKEND_ADMIN_EMAIL=admin@example.com
       - BACKEND_ADMIN_USERNAME=vit
@@ -61,11 +61,11 @@ services:
     restart: unless-stopped
     environment:
       - ENV_FOR_DYNACONF=development
-      - POSTGRES_DB=postgres
+      - POSTGRES_DB=${POSTGRES_DB:-postgres}
       - POSTGRES_HOST=postgres
       - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES__HOST=postgres
       - POSTGRES__PORT=5432
       - BACKEND__BASE_URL=http://backend:8000
