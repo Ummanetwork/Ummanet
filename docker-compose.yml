@@ -40,9 +40,9 @@ services:
       - BACKEND_ADMIN_EMAIL=admin@example.com
       - BACKEND_ADMIN_USERNAME=vit
       - BACKEND_ADMIN_PASSWORD=123456
-      - BACKEND_ADMIN_IDS=[394244504]
+      - BACKEND_ADMIN_IDS=394244504
       - BACKEND_OTP_BOT_TOKEN=${BOT_TOKEN}
-      - BACKEND_DEFAULT_LANGUAGES=["ru","en","ar","tr"]
+      - BACKEND_DEFAULT_LANGUAGES=ru,en,ar,tr
       - BACKEND_DEFAULT_LANGUAGE=ru
       # Reuse bot AI credentials for backend
       - BACKEND_AI_API_KEY=${AI_API_KEY}
