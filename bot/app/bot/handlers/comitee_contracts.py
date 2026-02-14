@@ -149,6 +149,18 @@ def _extract_contract_defendant_name(data: dict[str, object]) -> str | None:
     return None
 
 
+def _extract_contract_recipient_id(data: dict[str, object]) -> int | None:
+    raw = data.get("recipient_id")
+    if raw is None:
+        raw = data.get("recipient")
+    if raw is None:
+        return None
+    try:
+        return int(str(raw).strip())
+    except Exception:
+        return None
+
+
 def _build_contract_edit_keyboard(
     contract_id: int,
     lang_code: str,
@@ -3569,6 +3581,7 @@ async def handle_all_contracts(
     await callback.message.answer(get_text("contracts.list.title", lang_code))
     contract_index: dict[str, dict[str, object]] = {}
     contract_id_index: dict[int, dict[str, object]] = {}
+    counterparty_name_cache: dict[int, str | None] = {}
     for contract in contracts:
         data = contract.get("data") or {}
         contract_slug = str(contract.get("type") or "contract")
@@ -3600,10 +3613,26 @@ async def handle_all_contracts(
             status_text = _format_contract_status(contract.get("status"), lang_code)
             created_at = _format_contract_date(contract.get("created_at"))
             party = (
-                data.get("recipient")
-                or data.get("recipient_name")
-                or get_text("contracts.list.party.unknown", lang_code)
+                data.get("recipient_name")
+                or _extract_contract_defendant_name(data)
             )
+            if not party:
+                recipient_id = _extract_contract_recipient_id(data)
+                if recipient_id:
+                    if recipient_id not in counterparty_name_cache:
+                        try:
+                            recipient_user = await db.users.get_user(user_id=recipient_id)
+                            full_name = (
+                                (recipient_user.full_name or "").strip() if recipient_user else ""
+                            )
+                            counterparty_name_cache[recipient_id] = full_name or None
+                        except Exception:
+                            counterparty_name_cache[recipient_id] = None
+                    party = counterparty_name_cache.get(recipient_id)
+            if not party:
+                party = data.get("recipient")
+            if not party:
+                party = get_text("contracts.list.party.unknown", lang_code)
             caption = get_text(
                 "contracts.list.item",
                 lang_code,
