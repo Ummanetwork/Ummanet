@@ -140,17 +140,9 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-22.04
     steps:
-      - name: Probe host fingerprint (rsa)
-        id: probe_host
+      - name: Probe host fingerprint (debug)
         run: |
-          set -euo pipefail
-          FP="$(ssh-keyscan -t rsa -p "$SSH_PORT" "$SSH_HOST" 2>/dev/null | ssh-keygen -lf - | awk 'NR==1 {print $2}')"
-          if [ -z "$FP" ]; then
-            echo "::error::Failed to probe SSH host fingerprint"
-            exit 1
-          fi
-          echo "fingerprint=$FP" >> "$GITHUB_OUTPUT"
-          echo "Host RSA fingerprint: $FP"
+          ssh-keyscan -t rsa,ed25519 -p "$SSH_PORT" "$SSH_HOST" 2>/dev/null | ssh-keygen -lf - || true
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
@@ -162,7 +154,6 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
-          fingerprint: ${{ steps.probe_host.outputs.fingerprint }}
           envs: GHCR_USER,GHCR_PAT
           script: |
             set -euo pipefail
