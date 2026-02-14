@@ -158,6 +158,10 @@ jobs:
           script: |
             set -euo pipefail
             cd /opt/project
+            git remote set-url origin https://github.com/Ummanetwork/Ummanet.git
+            if ! git diff --quiet || ! git diff --cached --quiet; then
+              git stash push --include-untracked -m "ci-auto-stash-before-deploy-$(date +%s)" || true
+            fi
             git fetch --prune origin
             git checkout main
             git pull --ff-only origin main
