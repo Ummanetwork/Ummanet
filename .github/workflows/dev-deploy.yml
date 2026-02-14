@@ -155,7 +155,7 @@ jobs:
           fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
           script: |
             set -euo pipefail
-            cd /opt/tg-bot
+            cd /opt/opt/project
             # если образы приватные — логинимся в GHCR:
             if [ -n "${GHCR_USER:-}" ] && [ -n "${GHCR_PAT:-}" ]; then
               echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
