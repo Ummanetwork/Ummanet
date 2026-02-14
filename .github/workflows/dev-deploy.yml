@@ -2,23 +2,23 @@ name: dev-ci-deploy
 
 on:
   push:
-    branches: [ "main" ]       # деплой на каждый пуш в main
-  workflow_dispatch: {}        # ручной запуск с кнопки Run workflow
+    branches: [ "main" ]
+  workflow_dispatch: {}
 
 permissions:
   contents: read
-  packages: write              # нужно, чтобы пушить образы в GHCR с GITHUB_TOKEN
+  packages: write
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_BACKEND: ghcr.io/Ummanetwork/shariat-backend
-  IMAGE_BOT:     ghcr.io/Ummanetwork/shariat-bot
-  IMAGE_RA:      ghcr.io/Ummanetwork/shariat-react-admin
-  IMAGE_VUE:     ghcr.io/Ummanetwork/shariat-vue-portal
-  IMAGE_NGINX:   ghcr.io/Ummanetwork/shariat-nginx
+  IMAGE_BACKEND: ghcr.io/ummanetwork/shariat-backend
+  IMAGE_BOT:     ghcr.io/ummanetwork/shariat-bot
+  IMAGE_RA:      ghcr.io/ummanetwork/shariat-react-admin
+  IMAGE_VUE:     ghcr.io/ummanetwork/shariat-vue-portal
+  IMAGE_NGINX:   ghcr.io/ummanetwork/shariat-nginx
   TAG_LATEST: dev-latest
   TAG_SHA: sha-${{ github.sha }}
-  
+
 concurrency:
   group: deploy-dev
   cancel-in-progress: true
@@ -140,11 +140,12 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-22.04
     steps:
-      - name: Probe host fingerprint
-        run: ssh-keyscan -t ed25519 -p "$SSH_PORT" "$SSH_HOST" | ssh-keygen -lf -
+      - name: Probe host fingerprint (rsa)
+        run: ssh-keyscan -t rsa -p "$SSH_PORT" "$SSH_HOST" | ssh-keygen -lf -
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
+
       - name: SSH deploy to dev server
         uses: appleboy/ssh-action@v1
         with:
@@ -153,18 +154,22 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_KEY }}
           fingerprint: ${{ secrets.SSH_HOST_FINGERPRINT }}
+          envs: GHCR_USER,GHCR_PAT
           script: |
             set -euo pipefail
-            cd /opt/opt/project
-            # если образы приватные — логинимся в GHCR:
+            cd /opt/project
+
+            # логин в GHCR для pull приватных образов
             if [ -n "${GHCR_USER:-}" ] && [ -n "${GHCR_PAT:-}" ]; then
               echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             fi
-            docker compose -f compose.yaml pull --quiet
-            docker compose -f compose.yaml up -d --remove-orphans --pull always --force-recreate
-            docker compose -f compose.yaml ps
-            # Apply DB migrations idempotently (safe to re-run)
-            docker compose -f compose.yaml exec -T bot alembic upgrade head || true
+
+            docker compose pull --quiet
+            docker compose up -d --remove-orphans --pull always --force-recreate
+            docker compose ps
+
+            # миграции (если настроены) — безопасно
+            docker compose exec -T bot alembic upgrade head || true
         env:
           GHCR_USER: ${{ secrets.GHCR_USERNAME }}
           GHCR_PAT:  ${{ secrets.GHCR_PAT }}
