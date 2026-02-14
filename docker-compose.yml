@@ -2,6 +2,7 @@ services:
   postgres:
     image: postgres:17-alpine
     container_name: shariat_postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
@@ -11,10 +12,16 @@ services:
     networks: [shariat]
     ports:
       - "15432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7-alpine
     container_name: shariat_redis
+    restart: unless-stopped
     networks: [shariat]
     ports:
       - "16379:6379"
@@ -24,6 +31,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: shariat_backend
+    restart: unless-stopped
     ports:
       - "8000:8000"
     environment:
@@ -40,7 +48,9 @@ services:
       - BACKEND_AI_API_KEY=${AI_API_KEY}
       - BACKEND_AI_BASE_URL=${AI_BASE_URL}
       - BACKEND_AI_MODEL=${AI_MODEL}
-    depends_on: [postgres]
+    depends_on:
+      postgres:
+        condition: service_healthy
     networks: [shariat]
 
   bot:
@@ -48,6 +58,7 @@ services:
       context: .
       dockerfile: bot/Dockerfile
     container_name: shariat_bot
+    restart: unless-stopped
     environment:
       - ENV_FOR_DYNACONF=development
       - POSTGRES_DB=postgres
@@ -65,8 +76,16 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - BOT_TOKEN=${BOT_TOKEN}
+      - AI_API_KEY=${AI_API_KEY}
+      - AI_BASE_URL=${AI_BASE_URL}
+      - AI_MODEL=${AI_MODEL}
+      - AI_FIREWORKS_ACCOUNT=${AI_FIREWORKS_ACCOUNT}
       - BOT_USE_WEBHOOKS=false
-    depends_on: [postgres, redis]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
     networks: [shariat]
 
   react-admin:
@@ -85,6 +104,7 @@ services:
 
   nginx:
     image: ghcr.io/Ummanetwork/shariat-nginx:dev-latest
+    restart: unless-stopped
     depends_on: [backend, bot, react-admin, vue-portal]
     ports:
       - "8081:80"

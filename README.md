@@ -57,8 +57,8 @@ docker compose -f compose.yaml exec -T bot alembic upgrade head
 ## Ручной запуск миграций на dev‑сервере
 
 ```
-ssh vps144
-cd /opt/tg-bot
+ssh ssh vpsShariat
+cd /opt/project
 docker compose -f compose.yaml exec -T bot alembic upgrade head
 ```
 

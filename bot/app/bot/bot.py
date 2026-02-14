@@ -42,6 +42,28 @@ from app.services.i18n.localization import get_text
 logger = logging.getLogger(__name__)
 
 
+async def _init_db_pool_with_retry() -> psycopg_pool.AsyncConnectionPool:
+    retry_delay = 5
+    max_retry_delay = 60
+
+    while True:
+        try:
+            return await get_pg_pool(
+                db_name=settings.postgres.name,
+                host=settings.postgres.host,
+                port=settings.postgres.port,
+                user=settings.postgres_user,
+                password=settings.postgres_password,
+            )
+        except Exception:
+            logger.exception(
+                "Failed to initialize PostgreSQL pool. Retrying in %s seconds...",
+                retry_delay,
+            )
+            await asyncio.sleep(retry_delay)
+            retry_delay = min(max_retry_delay, retry_delay * 2)
+
+
 async def main():
     logger.info("Starting bot")
 
@@ -84,13 +106,7 @@ async def main():
     if "dev" not in configured_locales:
         configured_locales.append("dev")
 
-    db_pool: psycopg_pool.AsyncConnectionPool = await get_pg_pool(
-        db_name=settings.postgres.name,
-        host=settings.postgres.host,
-        port=settings.postgres.port,
-        user=settings.postgres_user,
-        password=settings.postgres_password,
-    )
+    db_pool: psycopg_pool.AsyncConnectionPool = await _init_db_pool_with_retry()
 
     async with db_pool.connection() as raw_connection:
         async with raw_connection.transaction():
