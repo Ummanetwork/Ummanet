@@ -103,7 +103,7 @@ services:
     networks: [shariat]
 
   nginx:
-    image: ghcr.io/Ummanetwork/shariat-nginx:dev-latest
+    image: ghcr.io/ummanetwork/shariat-nginx:dev-latest
     restart: unless-stopped
     depends_on: [backend, bot, react-admin, vue-portal]
     ports:
