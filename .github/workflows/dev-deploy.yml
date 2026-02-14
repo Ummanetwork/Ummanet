@@ -173,7 +173,7 @@ jobs:
             fi
 
             docker compose -f "$COMPOSE_FILE" pull --quiet
-            docker compose -f "$COMPOSE_FILE" up -d --remove-orphans --force-recreate
+            docker compose -f "$COMPOSE_FILE" up -d --build --remove-orphans --force-recreate
             docker compose -f "$COMPOSE_FILE" ps
 
             # миграции (если настроены) — безопасно

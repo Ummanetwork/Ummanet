@@ -1,8 +1,90 @@
-from typing import List
+from typing import Any, List
+import json
 import os
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _strip_wrapping_quotes(value: str) -> str:
+    text = value.strip()
+    if len(text) >= 2 and text[0] == text[-1] and text[0] in {'"', "'"}:
+        return text[1:-1].strip()
+    return text
+
+
+def _unwrap_singleton_brackets(value: str) -> str:
+    text = _strip_wrapping_quotes(value)
+    if text.startswith("[") and text.endswith("]"):
+        inner = text[1:-1].strip()
+        if inner and "," not in inner:
+            return _strip_wrapping_quotes(inner)
+    return text
+
+
+def _parse_string_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple, set)):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, list):
+            return [str(item).strip() for item in parsed if str(item).strip()]
+        if isinstance(parsed, str):
+            text = parsed.strip()
+        else:
+            text = _unwrap_singleton_brackets(text)
+        return [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def _parse_int_list(value: Any) -> List[int]:
+    if value is None:
+        return []
+    candidates: list[Any]
+    if isinstance(value, (list, tuple, set)):
+        candidates = list(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        try:
+            parsed = json.loads(text)
+        except Exception:
+            parsed = None
+        if isinstance(parsed, list):
+            candidates = list(parsed)
+        elif parsed is not None:
+            candidates = [parsed]
+        else:
+            candidates = [part.strip() for part in text.replace(";", ",").split(",") if part.strip()]
+    else:
+        candidates = [value]
+
+    result: list[int] = []
+    for item in candidates:
+        if item is None:
+            continue
+        if isinstance(item, bool):
+            continue
+        if isinstance(item, int):
+            result.append(item)
+            continue
+        text = _unwrap_singleton_brackets(str(item))
+        if not text:
+            continue
+        try:
+            result.append(int(text))
+        except ValueError:
+            continue
+    return result
 
 
 class Settings(BaseSettings):
@@ -15,11 +97,12 @@ class Settings(BaseSettings):
     postgres_dsn: str = (
         "postgresql+psycopg://postgres:postgres@postgres:5432/postgres"
     )
-    default_languages: List[str] = ["en"]
+    # Keep Any here so env parser doesn't force JSON for list fields.
+    default_languages: Any = ["en"]
     default_language: str = "en"
-    # Optional: IDs of Telegram admins, protected from deletion
-    admin_ids: List[int] = []
-    # Optional AI translator for backend seeding/repair
+    # Optional: IDs of Telegram admins, protected from deletion.
+    admin_ids: Any = []
+    # Optional AI translator for backend seeding/repair.
     ai_api_key: str | None = None
     ai_base_url: str | None = None
     ai_model: str | None = None
@@ -29,32 +112,34 @@ class Settings(BaseSettings):
 
     @field_validator("default_languages", mode="before")
     @classmethod
-    def _split_languages(cls, value):
-        if isinstance(value, str):
-            items = [item.strip() for item in value.split(",")]
-            return [item for item in items if item]
-        return value
+    def _split_languages(cls, value: Any) -> List[str]:
+        langs = _parse_string_list(value)
+        return langs or ["en"]
 
     @field_validator("admin_ids", mode="before")
     @classmethod
-    def _split_admin_ids(cls, value):
+    def _split_admin_ids(cls, value: Any) -> List[int]:
         if not value:
-            # Fallback to generic ADMIN_IDS (without BACKEND_ prefix)
+            # Fallback to generic ADMIN_IDS (without BACKEND_ prefix).
             fallback = os.getenv("ADMIN_IDS")
             if fallback:
                 value = fallback
-        if isinstance(value, str):
-            items = []
-            for part in value.replace(";", ",").split(","):
-                part = part.strip()
-                if not part:
-                    continue
-                try:
-                    items.append(int(part))
-                except ValueError:
-                    continue
-            return items
-        return value
+        return _parse_int_list(value)
+
+    @field_validator("default_language", mode="before")
+    @classmethod
+    def _normalize_default_language(cls, value: Any) -> str:
+        if value is None:
+            return "en"
+        text = _unwrap_singleton_brackets(str(value)).strip()
+        return text or "en"
+
+    @field_validator("admin_email", "admin_username", "admin_password", mode="before")
+    @classmethod
+    def _normalize_scalar_settings(cls, value: Any) -> str:
+        if value is None:
+            return ""
+        return _unwrap_singleton_brackets(str(value))
 
     @field_validator("otp_bot_token", mode="before")
     @classmethod
