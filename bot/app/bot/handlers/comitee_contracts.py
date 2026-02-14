@@ -121,6 +121,13 @@ def _is_contract_fully_signed(contract: dict[str, object] | None) -> bool:
     return str(data.get("party_status") or "") == "signed"
 
 
+def _is_contract_counterparty_signed(contract: dict[str, object] | None) -> bool:
+    if not contract:
+        return False
+    data = contract.get("data") or {}
+    return str(data.get("party_status") or "") == "signed"
+
+
 def _extract_contract_defendant_name(data: dict[str, object]) -> str | None:
     candidate_keys = (
         "recipient_name",
@@ -1574,6 +1581,7 @@ def _build_contract_actions_keyboard(
     lang_code: str,
     *,
     allow_send_court: bool = False,
+    allow_delete: bool = True,
 ) -> InlineKeyboardMarkup:
     rows: list[list[InlineKeyboardButton]] = [
         [
@@ -1626,18 +1634,22 @@ def _build_contract_actions_keyboard(
             ],
             [
                 InlineKeyboardButton(
-                    text=get_text("contracts.flow.button.delete", lang_code),
-                    callback_data="contract_delete",
-                )
-            ],
-            [
-                InlineKeyboardButton(
                     text=get_text("button.cancel", lang_code),
                     callback_data="contract_cancel",
                 )
             ],
         ]
     )
+    if allow_delete:
+        rows.insert(
+            -1,
+            [
+                InlineKeyboardButton(
+                    text=get_text("contracts.flow.button.delete", lang_code),
+                    callback_data="contract_delete",
+                )
+            ],
+        )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -1668,17 +1680,20 @@ async def _show_contract_actions(
     state: FSMContext | None = None,
 ) -> None:
     allow_send_court = False
+    allow_delete = True
     if db is not None and state is not None:
         data = await state.get_data()
         contract_id = data.get("contract_id")
         if contract_id:
             contract = await db.contracts.get_contract(contract_id=int(contract_id))
             allow_send_court = _is_contract_fully_signed(contract)
+            allow_delete = not _is_contract_counterparty_signed(contract)
     await message.answer(
         get_text("contracts.flow.actions.title", lang_code),
         reply_markup=_build_contract_actions_keyboard(
             lang_code,
             allow_send_court=allow_send_court,
+            allow_delete=allow_delete,
         ),
     )
 
@@ -3277,6 +3292,10 @@ async def handle_contract_delete(
     data = await state.get_data()
     contract_id = data.get("contract_id")
     if not contract_id:
+        await callback.message.answer(get_text("error.request.invalid", lang_code))
+        return
+    contract = await db.contracts.get_contract(contract_id=int(contract_id))
+    if _is_contract_counterparty_signed(contract):
         await callback.message.answer(get_text("error.request.invalid", lang_code))
         return
     try:
