@@ -2,7 +2,7 @@ name: dev-ci-deploy
 
 on:
   push:
-    branches: [ "main" ]
+    branches: ["main"]
   workflow_dispatch: {}
 
 permissions:
@@ -12,10 +12,10 @@ permissions:
 env:
   REGISTRY: ghcr.io
   IMAGE_BACKEND: ghcr.io/ummanetwork/shariat-backend
-  IMAGE_BOT:     ghcr.io/ummanetwork/shariat-bot
-  IMAGE_RA:      ghcr.io/ummanetwork/shariat-react-admin
-  IMAGE_VUE:     ghcr.io/ummanetwork/shariat-vue-portal
-  IMAGE_NGINX:   ghcr.io/ummanetwork/shariat-nginx
+  IMAGE_BOT: ghcr.io/ummanetwork/shariat-bot
+  IMAGE_RA: ghcr.io/ummanetwork/shariat-react-admin
+  IMAGE_VUE: ghcr.io/ummanetwork/shariat-vue-portal
+  IMAGE_NGINX: ghcr.io/ummanetwork/shariat-nginx
   TAG_LATEST: dev-latest
   TAG_SHA: sha-${{ github.sha }}
 
@@ -156,28 +156,54 @@ jobs:
           key: ${{ secrets.SSH_KEY }}
           envs: GHCR_USER,GHCR_PAT
           script: |
-            set -euo pipefail
+            set -eu
+            set -o pipefail
+
             cd /opt/project
             git remote set-url origin https://github.com/Ummanetwork/Ummanet.git
+
+            # Preserve runtime secrets (gitignored) across git operations.
+            ENV_BACKUP_DIR="/tmp/ummanet-env-$(date +%s)"
+            mkdir -p "$ENV_BACKUP_DIR/bot"
+            if [ -f ".env" ]; then cp .env "$ENV_BACKUP_DIR/.env" && chmod 600 "$ENV_BACKUP_DIR/.env"; fi
+            if [ -f "bot/.env" ]; then cp bot/.env "$ENV_BACKUP_DIR/bot/.env" && chmod 600 "$ENV_BACKUP_DIR/bot/.env"; fi
+
+            # Update repo (stash only tracked changes).
             if ! git diff --quiet || ! git diff --cached --quiet; then
-              git stash push --include-untracked -m "ci-auto-stash-before-deploy-$(date +%s)" || true
+              git stash push -m "ci-auto-stash-before-deploy-$(date +%s)" || true
             fi
             git fetch --prune origin
             git checkout main
             git pull --ff-only origin main
+
+            # Restore runtime secrets after git pull.
+            if [ -f "$ENV_BACKUP_DIR/.env" ]; then cp "$ENV_BACKUP_DIR/.env" .env && chmod 600 .env; fi
+            if [ -f "$ENV_BACKUP_DIR/bot/.env" ]; then mkdir -p bot && cp "$ENV_BACKUP_DIR/bot/.env" bot/.env && chmod 600 bot/.env; fi
+            rm -rf "$ENV_BACKUP_DIR"
+
             COMPOSE_FILE="docker-compose.yml"
 
-            # логин в GHCR для pull приватных образов
+            # Deploy images built for this exact commit (avoids stale dev-latest).
+            export IMAGE_TAG="sha-$(git rev-parse HEAD)"
+            echo "Deploying IMAGE_TAG=$IMAGE_TAG"
+
+            # Optional GHCR auth for private images.
             if [ -n "${GHCR_USER:-}" ] && [ -n "${GHCR_PAT:-}" ]; then
               echo "$GHCR_PAT" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
             fi
 
-            docker compose -f "$COMPOSE_FILE" pull --quiet
+            docker compose -f "$COMPOSE_FILE" pull
             docker compose -f "$COMPOSE_FILE" up -d --remove-orphans --force-recreate
             docker compose -f "$COMPOSE_FILE" ps
+            docker compose -f "$COMPOSE_FILE" images
 
-            # миграции (если настроены) — безопасно
+            # Fail deploy if core health endpoints are not responding.
+            curl -fsS http://127.0.0.1:8081/health >/dev/null
+            curl -fsS http://127.0.0.1:8000/health >/dev/null
+
+            # Bot DB migrations (safe to skip).
             docker compose -f "$COMPOSE_FILE" exec -T bot alembic upgrade head || true
         env:
           GHCR_USER: ${{ secrets.GHCR_USERNAME }}
-          GHCR_PAT:  ${{ secrets.GHCR_PAT }}
+          GHCR_PAT: ${{ secrets.GHCR_PAT }}
+
