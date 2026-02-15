@@ -72,6 +72,8 @@ services:
     image: ghcr.io/ummanetwork/shariat-bot:${IMAGE_TAG:-dev-latest}
     container_name: shariat_bot
     restart: unless-stopped
+    env_file:
+      - ./bot/.env
     environment:
       - ENV_FOR_DYNACONF=development
       - POSTGRES_DB=${POSTGRES_DB:-postgres}
