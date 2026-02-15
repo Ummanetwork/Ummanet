@@ -1,4 +1,5 @@
 import logging
+import time
 from typing import Any, Awaitable, Callable
 
 from aiogram import BaseMiddleware
@@ -24,7 +25,15 @@ class DataBaseMiddleware(BaseMiddleware):
             logger.error("Database pool is not provided in middleware data.")
             raise RuntimeError("Missing db_pool in middleware context.")
 
+        acquire_started = time.monotonic()
         async with db_pool.connection() as raw_connection:
+            acquire_elapsed = time.monotonic() - acquire_started
+            if acquire_elapsed >= 2:
+                logger.warning(
+                    "Slow DB pool acquire: %.2fs for event=%s",
+                    acquire_elapsed,
+                    type(event).__name__,
+                )
             try:
                 # Enabling autocommit avoids long transactions that blocked the pool during network awaits.
                 autocommit_changed = False
@@ -36,7 +45,16 @@ class DataBaseMiddleware(BaseMiddleware):
                     autocommit_changed = True
                 connection = PsycopgConnection(raw_connection)
                 data["db"] = DB(connection)
-                return await handler(event, data)
+                started = time.monotonic()
+                result = await handler(event, data)
+                elapsed = time.monotonic() - started
+                if elapsed >= 5:
+                    logger.warning(
+                        "Slow handler execution: %.2fs for event=%s",
+                        elapsed,
+                        type(event).__name__,
+                    )
+                return result
             except Exception as exc:
                 logger.exception("Database middleware handler raised error: %s", exc)
                 raise

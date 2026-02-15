@@ -1,15 +1,17 @@
 import asyncio
 import json
 import logging
+import time
 
 import psycopg_pool
 import redis
-from aiogram import Bot, Dispatcher
+from aiogram import BaseMiddleware, Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import ExceptionTypeFilter
 from aiogram.fsm.storage.base import DefaultKeyBuilder
 from aiogram.fsm.storage.memory import MemoryStorage
+from aiogram.types import Update
 from aiogram_dialog import setup_dialogs
 from aiogram_dialog.api.entities import DIALOG_EVENT_NAME
 from aiogram_dialog.api.exceptions import UnknownIntent, UnknownState
@@ -42,9 +44,47 @@ from app.services.i18n.localization import get_text
 logger = logging.getLogger(__name__)
 
 
+def _as_int(value: object, default: int) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except Exception:
+        return default
+
+
+def _as_float(value: object, default: float) -> float:
+    try:
+        return float(value)  # type: ignore[arg-type]
+    except Exception:
+        return default
+
+
+class RuntimeProbeMiddleware(BaseMiddleware):
+    def __init__(self, runtime_state: dict[str, float | int]) -> None:
+        super().__init__()
+        self._runtime_state = runtime_state
+
+    async def __call__(self, handler, event: Update, data):
+        self._runtime_state["last_update_monotonic"] = time.monotonic()
+        updates_total = int(self._runtime_state.get("updates_total", 0)) + 1
+        self._runtime_state["updates_total"] = updates_total
+        if updates_total % 100 == 0:
+            logger.info("Processed %s updates", updates_total)
+        return await handler(event, data)
+
+
 async def _init_db_pool_with_retry() -> psycopg_pool.AsyncConnectionPool:
     retry_delay = 5
     max_retry_delay = 60
+    pool_min_size = _as_int(getattr(settings, "postgres_pool_min_size", 2), 2)
+    pool_max_size = _as_int(getattr(settings, "postgres_pool_max_size", 12), 12)
+    pool_timeout = _as_float(getattr(settings, "postgres_pool_timeout", 30.0), 30.0)
+
+    logger.info(
+        "Initializing PostgreSQL pool (min_size=%s, max_size=%s, timeout=%ss)",
+        pool_min_size,
+        pool_max_size,
+        pool_timeout,
+    )
 
     while True:
         try:
@@ -54,6 +94,9 @@ async def _init_db_pool_with_retry() -> psycopg_pool.AsyncConnectionPool:
                 port=settings.postgres.port,
                 user=settings.postgres_user,
                 password=settings.postgres_password,
+                min_size=pool_min_size,
+                max_size=pool_max_size,
+                timeout=pool_timeout,
             )
         except Exception:
             logger.exception(
@@ -85,6 +128,11 @@ async def main():
         default=DefaultBotProperties(parse_mode=ParseMode(settings.bot.parse_mode)),
     )
     dp = Dispatcher(storage=storage)
+    runtime_state: dict[str, float | int] = {
+        "started_monotonic": time.monotonic(),
+        "last_update_monotonic": time.monotonic(),
+        "updates_total": 0,
+    }
     if settings.cache.use_cache:
         cache_pool = await get_redis_pool(
             db=settings.redis.database,
@@ -241,6 +289,7 @@ async def main():
     dp.include_routers(*dialogs)
 
     logger.info("Including middlewares")
+    dp.update.middleware(RuntimeProbeMiddleware(runtime_state))
     dp.update.middleware(DataBaseMiddleware())
     dp.update.middleware(GetUserMiddleware())
     dp.update.middleware(RegistrationGuardMiddleware())
@@ -275,6 +324,100 @@ async def main():
                 js=js,
                 delay_del_subject=settings.nats.delayed_consumer_subject,
             )
+
+        watchdog_interval_sec = _as_int(getattr(settings, "bot_watchdog_interval_sec", 30), 30)
+        watchdog_max_failures = _as_int(getattr(settings, "bot_watchdog_max_failures", 4), 4)
+        stale_updates_warning_sec = _as_int(
+            getattr(settings, "bot_stale_updates_warning_sec", 900),
+            900,
+        )
+        watchdog_timeout_sec = _as_float(getattr(settings, "bot_watchdog_timeout_sec", 10), 10)
+
+        async def _ping_database() -> None:
+            async with db_pool.connection() as _raw:
+                conn = PsycopgConnection(_raw)
+                await conn.fetchone(sql="SELECT 1")
+
+        async def polling_worker() -> None:
+            restart_delay = 1
+            max_restart_delay = 30
+            while True:
+                try:
+                    # Polling mode must clear webhook mode explicitly.
+                    await bot.delete_webhook(drop_pending_updates=False)
+                    logger.info("Webhook disabled. Starting Telegram long polling.")
+                    await dp.start_polling(
+                        bot,
+                        **polling_kwargs,
+                    )
+                    logger.warning(
+                        "Polling loop finished without exception. Restarting in %s seconds.",
+                        restart_delay,
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception(
+                        "Polling loop crashed. Restarting in %s seconds.",
+                        restart_delay,
+                    )
+                await asyncio.sleep(restart_delay)
+                restart_delay = min(max_restart_delay, restart_delay * 2)
+
+        async def liveness_watchdog_worker() -> None:
+            tg_failures = 0
+            db_failures = 0
+            while True:
+                since_last_update = time.monotonic() - float(
+                    runtime_state.get("last_update_monotonic", time.monotonic())
+                )
+                updates_total = int(runtime_state.get("updates_total", 0))
+
+                try:
+                    await asyncio.wait_for(bot.get_me(), timeout=watchdog_timeout_sec)
+                    tg_failures = 0
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    tg_failures += 1
+                    logger.exception(
+                        "Watchdog: Telegram API check failed (%s/%s).",
+                        tg_failures,
+                        watchdog_max_failures,
+                    )
+
+                try:
+                    await asyncio.wait_for(_ping_database(), timeout=watchdog_timeout_sec)
+                    db_failures = 0
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    db_failures += 1
+                    logger.exception(
+                        "Watchdog: database check failed (%s/%s).",
+                        db_failures,
+                        watchdog_max_failures,
+                    )
+
+                if since_last_update >= stale_updates_warning_sec:
+                    logger.warning(
+                        "Watchdog: no updates for %.0f sec (processed=%s).",
+                        since_last_update,
+                        updates_total,
+                    )
+                else:
+                    logger.info(
+                        "Watchdog heartbeat: processed=%s, last_update_ago=%.0fs.",
+                        updates_total,
+                        since_last_update,
+                    )
+
+                if tg_failures >= watchdog_max_failures or db_failures >= watchdog_max_failures:
+                    raise RuntimeError(
+                        "Watchdog triggered restart due to repeated Telegram/DB connectivity failures."
+                    )
+
+                await asyncio.sleep(watchdog_interval_sec)
 
         async def notifications_worker():
             # Periodically poll backend.notifications and send messages
@@ -481,10 +624,8 @@ async def main():
                 await asyncio.sleep(21600)
 
         tasks = [
-            dp.start_polling(
-                bot,
-                **polling_kwargs,
-            ),
+            polling_worker(),
+            liveness_watchdog_worker(),
             notifications_worker(),
             voting_close_worker(),
             admin_tasks_reminder_worker(),
@@ -503,8 +644,8 @@ async def main():
             )
 
         await asyncio.gather(*tasks)
-    except Exception as e:
-        logger.exception(e)
+    except Exception:
+        logger.exception("Bot main loop terminated with an error")
     finally:
         if backend_client is not None:
             await backend_client.close()

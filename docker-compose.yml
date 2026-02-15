@@ -68,6 +68,9 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES__HOST=postgres
       - POSTGRES__PORT=5432
+      - POSTGRES_POOL_MIN_SIZE=2
+      - POSTGRES_POOL_MAX_SIZE=12
+      - POSTGRES_POOL_TIMEOUT=30
       - BACKEND__BASE_URL=http://backend:8000
       - BACKEND__ADMIN_EMAIL=admin@example.com
       - BACKEND__ADMIN_PASSWORD=123456
@@ -80,6 +83,10 @@ services:
       - AI_BASE_URL=${AI_BASE_URL}
       - AI_MODEL=${AI_MODEL}
       - AI_FIREWORKS_ACCOUNT=${AI_FIREWORKS_ACCOUNT}
+      - BOT_WATCHDOG_INTERVAL_SEC=30
+      - BOT_WATCHDOG_MAX_FAILURES=4
+      - BOT_WATCHDOG_TIMEOUT_SEC=10
+      - BOT_STALE_UPDATES_WARNING_SEC=900
       - BOT_USE_WEBHOOKS=false
     depends_on:
       postgres:
