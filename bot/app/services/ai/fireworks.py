@@ -1,6 +1,7 @@
 import logging
 import re
 import asyncio
+import json
 from functools import lru_cache
 from typing import Optional
 
@@ -11,7 +12,7 @@ from config.config import settings
 
 logger = logging.getLogger(__name__)
 _RETRYABLE_STATUSES = {429, 500, 502, 503, 504}
-_MAX_RETRIES = 3
+_MAX_RETRIES = 8
 _RETRY_BASE_DELAY_SECONDS = 2.0
 
 
@@ -37,6 +38,54 @@ def _setting_float(*keys: str, default: float) -> float:
         except Exception:
             continue
     return default
+
+
+def _setting_bool(*keys: str, default: bool) -> bool:
+    for key in keys:
+        value = settings.get(key)
+        if value is None:
+            continue
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in {"1", "true", "yes", "y", "on"}:
+            return True
+        if text in {"0", "false", "no", "n", "off"}:
+            return False
+    return default
+
+
+def _parse_retry_after(value: Optional[str]) -> Optional[float]:
+    if not value:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    try:
+        seconds = float(text)
+    except Exception:
+        return None
+    if seconds <= 0:
+        return None
+    return seconds
+
+
+def _extract_provider_error_code(body_text: str) -> Optional[str]:
+    if not body_text:
+        return None
+    try:
+        data = json.loads(body_text)
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    err = data.get("error")
+    if not isinstance(err, dict):
+        return None
+    code = err.get("code")
+    if not code:
+        return None
+    return str(code).strip() or None
 
 
 @lru_cache(maxsize=1)
@@ -104,6 +153,21 @@ async def generate_ai_response(message: str, lang_code: Optional[str] = None) ->
     )
     queue_timeout_sec = _setting_float("AI_QUEUE_TIMEOUT_SEC", "ai_queue_timeout_sec", default=5.0)
     overall_timeout_sec = _setting_float("AI_OVERALL_TIMEOUT_SEC", "ai_overall_timeout_sec", default=90.0)
+    debug_errors = _setting_bool("AI_DEBUG_ERRORS", "ai_debug_errors", default=False)
+    scaling_up_max_attempts = _setting_int(
+        "AI_SCALING_UP_MAX_ATTEMPTS",
+        "ai_scaling_up_max_attempts",
+        default=2,
+    )
+    if scaling_up_max_attempts < 1:
+        scaling_up_max_attempts = 1
+    scaling_up_retry_delay_sec = _setting_float(
+        "AI_SCALING_UP_RETRY_DELAY_SEC",
+        "ai_scaling_up_retry_delay_sec",
+        default=5.0,
+    )
+    if scaling_up_retry_delay_sec < 0:
+        scaling_up_retry_delay_sec = 0.0
 
     semaphore = _build_ai_semaphore()
     acquired = False
@@ -146,18 +210,33 @@ async def generate_ai_response(message: str, lang_code: Optional[str] = None) ->
                     last_exc = exc
                     status_code = exc.response.status_code
                     body_text = exc.response.text or ""
-                    retryable = (
-                        status_code in _RETRYABLE_STATUSES
+                    error_code = _extract_provider_error_code(body_text) or ""
+                    is_scaling_up = (
+                        error_code == "DEPLOYMENT_SCALING_UP"
                         or "DEPLOYMENT_SCALING_UP" in body_text
                     )
-                    if not retryable or attempt >= max_retries:
+                    retryable = (
+                        status_code in _RETRYABLE_STATUSES
+                        or is_scaling_up
+                    )
+                    attempt_limit = min(max_retries, scaling_up_max_attempts) if is_scaling_up else max_retries
+                    if not retryable or attempt >= attempt_limit:
+                        if is_scaling_up:
+                            return get_text("ai.error.warming_up", lang)
                         raise
-                    delay = retry_base_delay * attempt
+
+                    retry_after = _parse_retry_after(exc.response.headers.get("Retry-After"))
+                    if is_scaling_up:
+                        # Fireworks cold start may take minutes; don't block user requests for too long.
+                        delay = retry_after if retry_after is not None else scaling_up_retry_delay_sec
+                    else:
+                        delay = retry_after if retry_after is not None else (retry_base_delay * attempt)
                     logger.warning(
-                        "AI provider returned %s (attempt %s/%s), retrying in %.1fs",
+                        "AI provider returned %s/%s (attempt %s/%s), retrying in %.1fs",
                         status_code,
+                        error_code or "-",
                         attempt,
-                        max_retries,
+                        attempt_limit,
                         delay,
                     )
                     await asyncio.sleep(delay)
@@ -185,6 +264,13 @@ async def generate_ai_response(message: str, lang_code: Optional[str] = None) ->
         logger.warning("AI request timed out after %.1fs", overall_timeout_sec)
         return get_text("ai.error.unavailable", lang)
     except Exception as exc:
+        # Common case: provider is waking up from scale-to-zero.
+        if isinstance(exc, httpx.HTTPStatusError):
+            body_text = exc.response.text or ""
+            error_code = _extract_provider_error_code(body_text) or ""
+            if error_code == "DEPLOYMENT_SCALING_UP" or "DEPLOYMENT_SCALING_UP" in body_text:
+                return get_text("ai.error.warming_up", lang)
+
         logger.exception("Failed to generate AI response")
         detail = getattr(exc, "message", None) or getattr(exc, "body", None)
         if detail is None and isinstance(exc, httpx.HTTPStatusError):
@@ -199,8 +285,13 @@ async def generate_ai_response(message: str, lang_code: Optional[str] = None) ->
                     detail = None
         if detail is None:
             detail = repr(exc)
-        debug_suffix = f"\n\n[AI error: {detail}]"
-        return get_text("ai.error.generic", lang) + debug_suffix
+        if debug_errors:
+            detail_text = str(detail)
+            if len(detail_text) > 800:
+                detail_text = detail_text[:800] + "...(truncated)"
+            debug_suffix = f"\n\n[AI error: {detail_text}]"
+            return get_text("ai.error.generic", lang) + debug_suffix
+        return get_text("ai.error.generic", lang)
     finally:
         if acquired:
             semaphore.release()
