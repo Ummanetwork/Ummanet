@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Optional
 
@@ -37,6 +38,26 @@ HOLIDAY_TOPICS = {
     "holiday_ramadan": {"text_key": "holiday.ramadan", "slug": "ramadan"},
     "holiday_hajj": {"text_key": "holiday.hajj", "slug": "hajj"},
 }
+
+
+async def _deliver_holiday_ai_answer(
+    waiting_message,
+    *,
+    question: str,
+    lang_code: str,
+) -> None:
+    try:
+        ai_answer = await generate_ai_response(question, lang_code=lang_code)
+        prefix = get_text("ai.response.prefix", lang_code)
+        footer = get_text("ai.response.footer", lang_code)
+        final_text = f"{prefix}\n{ai_answer}\n\n{footer}"
+        try:
+            await waiting_message.edit_text(final_text)
+        except Exception:
+            logger.exception("Failed to edit AI waiting message")
+            await waiting_message.bot.send_message(chat_id=waiting_message.chat.id, text=final_text)
+    except Exception:
+        logger.exception("Failed to deliver holiday AI answer")
 
 
 @router.callback_query(F.data.in_(KNOWLEDGE_TOPICS.keys()))
@@ -163,15 +184,13 @@ async def handle_holiday_ai_prompt(
 
     await callback.answer()
     waiting_message = await callback.message.answer(get_text("ai.response.waiting", lang_code))
-    ai_answer = await generate_ai_response(question, lang_code=lang_code)
-    prefix = get_text("ai.response.prefix", lang_code)
-    footer = get_text("ai.response.footer", lang_code)
-    final_text = f"{prefix}\n{ai_answer}\n\n{footer}"
-    try:
-        await waiting_message.edit_text(final_text)
-    except Exception:
-        logger.exception("Failed to edit AI waiting message")
-        await callback.message.answer(final_text)
+    asyncio.create_task(
+        _deliver_holiday_ai_answer(
+            waiting_message,
+            question=question,
+            lang_code=lang_code,
+        )
+    )
 
 
 @router.callback_query(F.data.startswith("holiday_doc:"))

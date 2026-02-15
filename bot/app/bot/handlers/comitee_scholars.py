@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 import uuid
 from typing import Optional
@@ -39,6 +40,60 @@ async def answer_placeholder(
     lang_code = user_language(user_row, callback.from_user)
     text = get_text(text_key, lang_code)
     await callback.answer(text, show_alert=show_alert)
+
+
+def _build_ai_followup_keyboard(lang_code: str, user_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=get_text("button.ask.scholars", lang_code),
+                    callback_data=f"ask_{user_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=get_text("button.community.support", lang_code),
+                    url="https://t.me/+GLVL7Yi7OBszMmE8",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text=get_text("button.materials", lang_code),
+                    url="https://t.me/Sharia_Men_Chat",
+                )
+            ],
+        ]
+    )
+
+
+async def _deliver_generic_ai_answer(
+    *,
+    bot: types.Bot,
+    chat_id: int,
+    waiting_message_id: int,
+    question_text: str,
+    lang_code: str,
+    user_id: int,
+) -> None:
+    try:
+        ai_answer = await generate_ai_response(question_text, lang_code=lang_code)
+        prefix = get_text("ai.response.prefix", lang_code)
+        footer = get_text("ai.response.footer", lang_code)
+        keyboard = _build_ai_followup_keyboard(lang_code, user_id)
+        final_text = f"{prefix}\n{ai_answer}\n\n{footer}"
+        try:
+            await bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=waiting_message_id,
+                text=final_text,
+                reply_markup=keyboard,
+            )
+        except Exception:
+            logger.exception("Failed to edit AI waiting message in scholars flow")
+            await bot.send_message(chat_id=chat_id, text=final_text, reply_markup=keyboard)
+    except Exception:
+        logger.exception("Failed to deliver generic AI answer")
 
 
 @router.message(ScholarAnswers.answer)
@@ -195,29 +250,14 @@ async def handle_generic_message(
 
     lang_code = user_language(user_row, message.from_user)
     set_pending_question(message.from_user.id, question_text)
-    ai_answer = await generate_ai_response(question_text, lang_code=lang_code)
-    keyboard = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=get_text("button.ask.scholars", lang_code),
-                    callback_data=f"ask_{message.from_user.id}",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=get_text("button.community.support", lang_code),
-                    url="https://t.me/+GLVL7Yi7OBszMmE8",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text=get_text("button.materials", lang_code),
-                    url="https://t.me/Sharia_Men_Chat",
-                )
-            ],
-        ]
+    waiting_message = await message.answer(get_text("ai.response.waiting", lang_code))
+    asyncio.create_task(
+        _deliver_generic_ai_answer(
+            bot=message.bot,
+            chat_id=message.chat.id,
+            waiting_message_id=waiting_message.message_id,
+            question_text=question_text,
+            lang_code=lang_code,
+            user_id=message.from_user.id,
+        )
     )
-    prefix = get_text("ai.response.prefix", lang_code)
-    footer = get_text("ai.response.footer", lang_code)
-    await message.answer(f"{prefix}\n{ai_answer}\n\n{footer}", reply_markup=keyboard)
