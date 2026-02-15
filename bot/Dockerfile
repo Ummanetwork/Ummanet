@@ -12,5 +12,6 @@ RUN apt-get update \
 RUN pip install -r /tmp/requirements.txt
 
 COPY bot/ ./
+COPY shared/ ./shared/
 
 CMD ["python", "main.py"]
