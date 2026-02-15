@@ -2445,7 +2445,13 @@ async def login_otp(
         ttl_seconds=ttl,
         max_attempts=attempts,
     )
-    _send_otp_to_telegram(account["telegram_id"], f"Your admin login code: {otp_code}")
+    if not _send_otp_to_telegram(
+        account["telegram_id"], f"Your admin login code: {otp_code}"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Failed to deliver OTP. Please try again later.",
+        )
     return LoginOtpResponse(pending_token=pending_token, expires_in=ttl)
 
 
@@ -4939,19 +4945,45 @@ def _load_admin_roles(session: Session, admin_id: int) -> List[str]:
     return [row for row in rows]
 
 
-def _send_otp_to_telegram(telegram_id: int, text: str) -> None:
+def _send_otp_to_telegram(telegram_id: int, text: str) -> bool:
     token = settings.otp_bot_token
     if not token or not telegram_id:
         logger.warning("OTP not sent: bot token or telegram_id missing.")
-        return
+        return False
     try:
-        requests.post(
+        resp = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
             json={"chat_id": telegram_id, "text": text},
             timeout=5,
         )
+        try:
+            data = resp.json()
+        except Exception:
+            data = None
+
+        ok = bool(resp.ok)
+        if isinstance(data, dict):
+            ok = ok and bool(data.get("ok", True))
+
+        if not ok:
+            description = ""
+            error_code = None
+            if isinstance(data, dict):
+                description = str(data.get("description") or "")
+                error_code = data.get("error_code")
+            else:
+                description = (resp.text or "")[:200]
+            logger.warning(
+                "OTP send failed telegram_id=%s status=%s error_code=%s description=%s",
+                telegram_id,
+                resp.status_code,
+                error_code,
+                description,
+            )
+        return ok
     except Exception:
         logger.exception("Failed to send OTP to telegram_id=%s", telegram_id)
+        return False
 
 
 def _normalize_blacklist_phone(value: Optional[str]) -> Optional[str]:
