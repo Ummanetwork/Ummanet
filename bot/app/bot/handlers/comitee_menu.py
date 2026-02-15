@@ -19,6 +19,7 @@ from app.infrastructure.database.models.user import UserModel
 from app.infrastructure.database.db import DB
 from app.services.i18n.localization import get_text, resolve_language
 from config.config import settings
+from shared.link_slots import DEFAULT_MEN_CHAT_URL, DEFAULT_WOMEN_CHAT_URL
 
 from .comitee_common import user_language
 from .comitee_sharia_control import show_shariah_control_menu
@@ -52,8 +53,10 @@ def _bot_option(*names: str) -> Optional[str]:
     return None
 
 
-MEN_CHAT_URL = _bot_option("MEN_CHAT_URL", "men_chat_url") or "https://t.me/Sharia_Men_Chat"
-WOMEN_CHAT_URL = _bot_option("WOMEN_CHAT_URL", "women_chat_url") or "https://t.me/Sharia_Women_Chat"
+MEN_CHAT_URL = _bot_option("MEN_CHAT_URL", "men_chat_url") or DEFAULT_MEN_CHAT_URL
+WOMEN_CHAT_URL = (
+    _bot_option("WOMEN_CHAT_URL", "women_chat_url") or DEFAULT_WOMEN_CHAT_URL
+)
 COURTS_OPENED_CHAT_URL = (
     _bot_option("COURTS_OPENED_CHAT_URL", "courts_opened_chat_url") or MEN_CHAT_URL
 )

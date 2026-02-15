@@ -452,9 +452,15 @@ login_challenges_table = Table(
     Column("attempts_left", Integer, nullable=False, default=5),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
-class LoginRequest(BaseModel):
+class LegacyLoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ServiceLoginRequest(BaseModel):
+    api_key: str
+    service: str = "bot"
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
@@ -1800,8 +1806,13 @@ def _bootstrap_database() -> None:
                 select(admin_accounts_table.c.username, admin_accounts_table.c.id)
             ).all()
         )
-        super_username = settings.admin_username or "admin"
+        super_username = (settings.admin_username or "admin").strip() or "admin"
         if super_username not in existing_admins:
+            bootstrap_admin_password = settings.admin_password
+            if not bootstrap_admin_password:
+                raise RuntimeError(
+                    "BACKEND_ADMIN_PASSWORD is required to create the initial admin account."
+                )
             telegram_id_seed = None
             if settings.admin_ids:
                 try:
@@ -1812,7 +1823,7 @@ def _bootstrap_database() -> None:
                 insert(admin_accounts_table)
                 .values(
                     username=super_username,
-                    password_hash=_hash_password(settings.admin_password or "admin123"),
+                    password_hash=_hash_password(bootstrap_admin_password),
                     telegram_id=telegram_id_seed,
                     is_active=True,
                 )
@@ -1820,14 +1831,16 @@ def _bootstrap_database() -> None:
             ).scalar_one()
         else:
             super_id = existing_admins[super_username]
+            update_values: dict[str, object] = {"is_active": True}
+            if settings.admin_ids:
+                try:
+                    update_values["telegram_id"] = int(settings.admin_ids[0])
+                except Exception:
+                    pass
             connection.execute(
                 update(admin_accounts_table)
                 .where(admin_accounts_table.c.id == super_id)
-                .values(
-                    password_hash=_hash_password(settings.admin_password or "admin123"),
-                    telegram_id=int(settings.admin_ids[0]) if settings.admin_ids else None,
-                    is_active=True,
-                )
+                .values(**update_values)
             )
         super_role_id = connection.execute(
             select(roles_table.c.id).where(roles_table.c.slug == SUPERADMIN_ROLE)
@@ -1846,70 +1859,46 @@ def _bootstrap_database() -> None:
                     admin_account_id=super_id, role_id=super_role_id
                 )
             )
-        # Seed owner account with superadmin role (uses ADMIN_IDS for telegram)
+        # Do not auto-create owner with a predictable password.
+        # If an owner account already exists from previous deployments, keep role bindings valid.
         owner_username = "owner"
-        existing_owner = connection.execute(
-            select(admin_accounts_table.c.id).where(admin_accounts_table.c.username == owner_username)
+        owner_id = connection.execute(
+            select(admin_accounts_table.c.id).where(
+                admin_accounts_table.c.username == owner_username
+            )
         ).scalar_one_or_none()
-        owner_telegram = None
-        if settings.admin_ids:
-            try:
-                owner_telegram = int(settings.admin_ids[0])
-            except Exception:
-                owner_telegram = None
-        if existing_owner is None:
-            owner_id = connection.execute(
-                insert(admin_accounts_table)
-                .values(
-                    username=owner_username,
-                    password_hash=_hash_password("owner"),
-                    telegram_id=owner_telegram,
-                    is_active=True,
-                )
-                .returning(admin_accounts_table.c.id)
+        if owner_id is not None:
+            owner_role_id = connection.execute(
+                select(roles_table.c.id).where(roles_table.c.slug == OWNER_ROLE)
             ).scalar_one()
-        else:
-            owner_id = existing_owner
-            connection.execute(
-                update(admin_accounts_table)
-                .where(admin_accounts_table.c.id == owner_id)
-                .values(
-                    telegram_id=owner_telegram,
-                    is_active=True,
+            assigned_owner = connection.execute(
+                select(admin_account_roles_table.c.admin_account_id).where(
+                    and_(
+                        admin_account_roles_table.c.admin_account_id == owner_id,
+                        admin_account_roles_table.c.role_id == owner_role_id,
+                    )
                 )
-            )
-        owner_role_id = connection.execute(
-            select(roles_table.c.id).where(roles_table.c.slug == OWNER_ROLE)
-        ).scalar_one()
-        assigned_owner = connection.execute(
-            select(admin_account_roles_table.c.admin_account_id).where(
-                and_(
-                    admin_account_roles_table.c.admin_account_id == owner_id,
-                    admin_account_roles_table.c.role_id == owner_role_id,
+            ).first()
+            if not assigned_owner:
+                connection.execute(
+                    insert(admin_account_roles_table).values(
+                        admin_account_id=owner_id, role_id=owner_role_id
+                    )
                 )
-            )
-        ).first()
-        if not assigned_owner:
-            connection.execute(
-                insert(admin_account_roles_table).values(
-                    admin_account_id=owner_id, role_id=owner_role_id
+            owner_super = connection.execute(
+                select(admin_account_roles_table.c.admin_account_id).where(
+                    and_(
+                        admin_account_roles_table.c.admin_account_id == owner_id,
+                        admin_account_roles_table.c.role_id == super_role_id,
+                    )
                 )
-            )
-        # Ensure owner also has superadmin
-        owner_super = connection.execute(
-            select(admin_account_roles_table.c.admin_account_id).where(
-                and_(
-                    admin_account_roles_table.c.admin_account_id == owner_id,
-                    admin_account_roles_table.c.role_id == super_role_id,
+            ).first()
+            if not owner_super:
+                connection.execute(
+                    insert(admin_account_roles_table).values(
+                        admin_account_id=owner_id, role_id=super_role_id
+                    )
                 )
-            )
-        ).first()
-        if not owner_super:
-            connection.execute(
-                insert(admin_account_roles_table).values(
-                    admin_account_id=owner_id, role_id=super_role_id
-                )
-            )
         _ensure_blacklist_identity_index(connection)
         existing_codes = set(
             connection.execute(select(languages_table.c.code)).scalars().all()
@@ -2078,57 +2067,136 @@ def _bootstrap_database() -> None:
 @app.on_event("startup")
 def on_startup() -> None:
     _bootstrap_database()
-    # Auto-repair translations on startup: copy RU emoji prefixes into AR/TR/EN,
-    # fill empties from RU, and sync placeholders. Safe and idempotent.
-    try:
-        global _ai_translator
-        if settings.ai_api_key and settings.ai_model:
-            base_url = settings.ai_base_url or "https://api.fireworks.ai/inference/v1"
-            _ai_translator = AITranslator(
-                base_url=base_url,
-                api_key=settings.ai_api_key,
-                model=settings.ai_model,
-            )
-        with get_session() as session:
-            updated, examined, per_lang = _repair_translations_internal(
-                session=session,
-                targets_for_icons=["ar", "tr", "en"],
-                use_ru_for_missing=True,
-                ensure_placeholders=True,
-                translator=_ai_translator,
-                prefer_ai=True,
-            )
-            if updated:
-                logger.info(
-                    "Translations auto-repair: updated=%s examined=%s per_language=%s",
-                    updated,
-                    examined,
-                    per_lang,
+    if settings.jwt_secret_key == "change-me":
+        raise RuntimeError(
+            "BACKEND_JWT_SECRET_KEY must be set to a non-default secure value."
+        )
+
+    global _ai_translator
+    _ai_translator = None
+    if settings.ai_api_key and settings.ai_model:
+        base_url = settings.ai_base_url or "https://api.fireworks.ai/inference/v1"
+        _ai_translator = AITranslator(
+            base_url=base_url,
+            api_key=settings.ai_api_key,
+            model=settings.ai_model,
+        )
+
+    if settings.auto_repair_translations_on_startup:
+        try:
+            with get_session() as session:
+                updated, examined, per_lang = _repair_translations_internal(
+                    session=session,
+                    targets_for_icons=["ar", "tr", "en"],
+                    use_ru_for_missing=True,
+                    ensure_placeholders=True,
+                    translator=_ai_translator,
+                    prefer_ai=True,
                 )
-    except Exception:
-        logger.exception("Translations auto-repair failed")
+                if updated:
+                    logger.info(
+                        "Translations auto-repair: updated=%s examined=%s per_language=%s",
+                        updated,
+                        examined,
+                        per_lang,
+                    )
+        except Exception:
+            logger.exception("Translations auto-repair failed")
+    else:
+        logger.info(
+            "Translations auto-repair on startup is disabled (BACKEND_AUTO_REPAIR_TRANSLATIONS_ON_STARTUP=false)."
+        )
+cors_origins = list(settings.cors_origins or [])
+allow_all_origins = "*" in cors_origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=["*"] if allow_all_origins else cors_origins,
+    allow_credentials=not allow_all_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 security_scheme = HTTPBearer(auto_error=False)
-def authenticate(email: str, password: str) -> bool:
-    return (
-        email.lower() == settings.admin_email.lower()
-        and password == settings.admin_password
+
+
+def _legacy_login_enabled() -> bool:
+    return bool(
+        settings.enable_legacy_login
+        and settings.admin_email
+        and settings.admin_password
     )
-def create_access_token(subject: str) -> str:
-    expires_delta = timedelta(minutes=settings.jwt_access_token_expires_minutes)
-    expire = datetime.utcnow() + expires_delta
-    payload = {"sub": subject, "exp": expire}
-    return jwt.encode(
-        payload,
-        key=settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
-    )
+
+
+def _ensure_service_account(
+    session: Session,
+    *,
+    service_name: str,
+) -> tuple[int, str, list[str]]:
+    configured_username = (settings.service_account_username or "").strip()
+    if configured_username:
+        if "{service}" in configured_username:
+            username = configured_username.format(service=service_name)
+        elif service_name == "bot":
+            username = configured_username
+        else:
+            username = f"{configured_username}_{service_name}"
+    else:
+        username = f"{service_name}_service"
+    account = _load_admin_account(session, username)
+    if account is None:
+        inserted_id = session.execute(
+            insert(admin_accounts_table)
+            .values(
+                username=username,
+                password_hash=_hash_password(secrets.token_urlsafe(32)),
+                telegram_id=None,
+                is_active=True,
+            )
+            .returning(admin_accounts_table.c.id)
+        ).scalar_one()
+        account_id = int(inserted_id)
+    else:
+        account_id = int(account["id"])
+        if not account.get("is_active"):
+            session.execute(
+                update(admin_accounts_table)
+                .where(admin_accounts_table.c.id == account_id)
+                .values(is_active=True)
+            )
+
+    required_roles = {DEFAULT_ADMIN_ROLE, ADMIN_DOCS_ROLE}
+    if service_name in {"maintenance", "ops", "translations"}:
+        required_roles.add(ADMIN_LANG_ROLE)
+    role_rows = session.execute(
+        select(roles_table.c.id, roles_table.c.slug).where(
+            roles_table.c.slug.in_(required_roles)
+        )
+    ).mappings().all()
+    role_by_slug = {str(row["slug"]): int(row["id"]) for row in role_rows}
+    missing_roles = [slug for slug in required_roles if slug not in role_by_slug]
+    if missing_roles:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Missing required roles for service account: {', '.join(sorted(missing_roles))}",
+        )
+
+    for slug, role_id in role_by_slug.items():
+        assigned = session.execute(
+            select(admin_account_roles_table.c.admin_account_id).where(
+                and_(
+                    admin_account_roles_table.c.admin_account_id == account_id,
+                    admin_account_roles_table.c.role_id == role_id,
+                )
+            )
+        ).first()
+        if not assigned:
+            session.execute(
+                insert(admin_account_roles_table).values(
+                    admin_account_id=account_id,
+                    role_id=role_id,
+                )
+            )
+
+    return account_id, username, _load_admin_roles(session, account_id)
 
 
 def create_admin_token(username: str, roles: List[str], account_id: int) -> str:
@@ -2145,25 +2213,6 @@ def create_admin_token(username: str, roles: List[str], account_id: int) -> str:
         key=settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
     )
-def decode_token(token: str) -> str:
-    try:
-        payload = jwt.decode(
-            token,
-            key=settings.jwt_secret_key,
-            algorithms=[settings.jwt_algorithm],
-        )
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-        ) from None
-    email = payload.get("sub")
-    if not email:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token payload",
-        )
-    return email
 def decode_admin_token(token: str) -> dict:
     try:
         payload = jwt.decode(
@@ -2194,22 +2243,14 @@ async def get_current_user(
             detail="Authentication credentials were not provided",
         )
     raw = credentials.credentials
-    # Try admin token first
-    try:
-        payload = decode_admin_token(raw)
-        roles = payload.get("roles") or []
-        if SUPERADMIN_ROLE in roles:
-            return payload.get("sub") or "admin"
-    except HTTPException:
-        payload = None
-    # Fallback to legacy email-based token
-    email = decode_token(raw)
-    if email.lower() != settings.admin_email.lower():
+    payload = decode_admin_token(raw)
+    roles = payload.get("roles") or []
+    if SUPERADMIN_ROLE not in roles and OWNER_ROLE not in roles:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired credentials",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Insufficient permissions.",
         )
-    return email
+    return payload.get("sub") or "admin"
 async def get_current_admin(
     credentials: HTTPAuthorizationCredentials | None = Depends(security_scheme),
     session: Session = Depends(db_session_dependency),
@@ -2221,31 +2262,14 @@ async def get_current_admin(
             detail="Authentication credentials were not provided",
         )
     raw_token = credentials.credentials
-    try:
-        payload = decode_admin_token(raw_token)
-        username = payload.get("sub")
-        aid = payload.get("aid")
-        if not username or aid is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token payload",
-            )
-    except HTTPException:
-        email = decode_token(raw_token)
-        if email.lower() != settings.admin_email.lower():
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or expired credentials",
-            )
-        legacy_username = settings.admin_username or "admin"
-        account = _load_admin_account(session, legacy_username)
-        if account is None or not account.get("is_active"):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Account disabled.",
-            )
-        roles = set(_load_admin_roles(session, account["id"]))
-        return {"id": account["id"], "username": legacy_username, "roles": list(roles)}
+    payload = decode_admin_token(raw_token)
+    username = payload.get("sub")
+    aid = payload.get("aid")
+    if not username or aid is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
     account = _load_admin_account(session, username)
     if account is None or not account.get("is_active"):
         raise HTTPException(
@@ -2330,13 +2354,74 @@ def _require_topic_access(admin: dict, topic: str) -> None:
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 @app.post("/auth/login", response_model=TokenResponse)
-async def login(payload: LoginRequest) -> TokenResponse:
-    if not authenticate(payload.email, payload.password):
+async def login(
+    payload: LegacyLoginRequest,
+    session: Session = Depends(db_session_dependency),
+) -> TokenResponse:
+    if not _legacy_login_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail="Legacy /auth/login is disabled. Use OTP login.",
+        )
+    if not (
+        payload.email.lower() == str(settings.admin_email).lower()
+        and payload.password == settings.admin_password
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect email or password",
         )
-    token = create_access_token(subject=payload.email.lower())
+    legacy_username = (settings.admin_username or "admin").strip() or "admin"
+    account = _load_admin_account(session, legacy_username)
+    if account is None or not account.get("is_active"):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account disabled.",
+        )
+    roles = _load_admin_roles(session, int(account["id"]))
+    token = create_admin_token(
+        username=legacy_username,
+        roles=roles,
+        account_id=int(account["id"]),
+    )
+    return TokenResponse(access_token=token)
+
+
+@app.post("/auth/service-login", response_model=TokenResponse)
+async def service_login(
+    payload: ServiceLoginRequest,
+    session: Session = Depends(db_session_dependency),
+) -> TokenResponse:
+    configured_api_key = settings.service_api_key
+    if not configured_api_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Service login is not configured.",
+        )
+    provided_api_key = (payload.api_key or "").strip()
+    if not provided_api_key or not secrets.compare_digest(
+        provided_api_key, configured_api_key
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid service credentials.",
+        )
+
+    service_name = (payload.service or "").strip().lower() or "bot"
+    if not re.fullmatch(r"[a-z0-9_-]{1,32}", service_name):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid service name.",
+        )
+    account_id, username, roles = _ensure_service_account(
+        session,
+        service_name=service_name,
+    )
+    token = create_admin_token(
+        username=username,
+        roles=roles,
+        account_id=account_id,
+    )
     return TokenResponse(access_token=token)
 
 
@@ -2404,16 +2489,15 @@ async def profile(credentials: HTTPAuthorizationCredentials | None = Depends(sec
             detail="Authentication credentials were not provided",
         )
     token = credentials.credentials
-    try:
-        payload = decode_admin_token(token)
-        username = payload.get("sub") or "admin"
-        roles = payload.get("roles") or []
-        admin_account_id = payload.get("aid")
-        return ProfileResponse(username=username, roles=roles, admin_account_id=admin_account_id)
-    except HTTPException:
-        # Fallback to legacy token
-        email = decode_token(token)
-        return ProfileResponse(username=email, roles=[SUPERADMIN_ROLE], admin_account_id=None)
+    payload = decode_admin_token(token)
+    username = payload.get("sub") or "admin"
+    roles = payload.get("roles") or []
+    admin_account_id = payload.get("aid")
+    return ProfileResponse(
+        username=username,
+        roles=roles,
+        admin_account_id=admin_account_id,
+    )
 @app.get(
     "/admin/users",
     response_model=List[UserOut],

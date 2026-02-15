@@ -217,19 +217,17 @@ class BackendDocumentsClient:
         self,
         *,
         base_url: str,
-        admin_email: str,
-        admin_password: str,
+        service_api_key: str,
         request_timeout: float = 15.0,
     ) -> None:
         if not base_url:
             raise ValueError("Backend base URL is required")
-        if not admin_email or not admin_password:
-            raise ValueError("Backend admin credentials are required")
+        if not (service_api_key or "").strip():
+            raise ValueError("Backend service_api_key is required")
 
         normalized_url = base_url.rstrip("/")
         self._base_url = normalized_url
-        self._admin_email = admin_email
-        self._admin_password = admin_password
+        self._service_api_key = service_api_key.strip()
         self._session = aiohttp.ClientSession(
             timeout=aiohttp.ClientTimeout(total=request_timeout)
         )
@@ -481,10 +479,9 @@ class BackendDocumentsClient:
 
     async def _refresh_token(self) -> None:
         logger.debug("Refreshing backend admin token")
-        async with self._session.post(
-            f"{self._base_url}/auth/login",
-            json={"email": self._admin_email, "password": self._admin_password},
-        ) as response:
+        endpoint = f"{self._base_url}/auth/service-login"
+        payload: dict[str, Any] = {"api_key": self._service_api_key, "service": "bot"}
+        async with self._session.post(endpoint, json=payload) as response:
             if response.status >= 400:
                 text = await response.text()
                 raise BackendRequestError(

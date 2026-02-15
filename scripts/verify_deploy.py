@@ -55,7 +55,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--remote-compose",
-        default="/opt/tg-bot/compose.yaml",
+        default="/opt/project/docker-compose.yml",
         help="Compose file path on the remote host",
     )
     parser.add_argument(

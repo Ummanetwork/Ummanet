@@ -103,6 +103,8 @@ celerybeat.pid
 
 # Environments
 *.env
+.env*
+!.env.example
 .venv
 env/
 venv/
@@ -156,6 +158,7 @@ dmypy.json
 
 /temp/
 poetry.lock
+.env copy
 
 .DS_Store
 # .vscode

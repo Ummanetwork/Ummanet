@@ -1,4 +1,24 @@
-﻿LINK_SLOTS = [
+import os
+
+
+DEFAULT_MATERIALS_URL = os.getenv(
+    "UMMANET_MATERIALS_URL",
+    "https://t.me/Ummanetwork",
+)
+DEFAULT_COMMUNITY_SUPPORT_URL = os.getenv(
+    "UMMANET_COMMUNITY_SUPPORT_URL",
+    DEFAULT_MATERIALS_URL,
+)
+DEFAULT_MEN_CHAT_URL = os.getenv(
+    "UMMANET_MEN_CHAT_URL",
+    DEFAULT_MATERIALS_URL,
+)
+DEFAULT_WOMEN_CHAT_URL = os.getenv(
+    "UMMANET_WOMEN_CHAT_URL",
+    DEFAULT_MATERIALS_URL,
+)
+
+LINK_SLOTS = [
     {
         "slug": "button.docs.portal",
         "titles": {"ru": "Портал знаний", "en": "Knowledge portal"},
@@ -79,13 +99,13 @@
 
 DEFAULT_LINKS = {
     slot["slug"]: {
-        "ru": "https://t.me/Sharia_Men_Chat",
-        "en": "https://t.me/Sharia_Men_Chat",
+        "ru": DEFAULT_MATERIALS_URL,
+        "en": DEFAULT_MATERIALS_URL,
     }
     for slot in LINK_SLOTS
 }
 
 DEFAULT_LINKS["button.community.support"] = {
-    "ru": "https://t.me/+GLVL7Yi7OBszMmE8",
-    "en": "https://t.me/+GLVL7Yi7OBszMmE8",
+    "ru": DEFAULT_COMMUNITY_SUPPORT_URL,
+    "en": DEFAULT_COMMUNITY_SUPPORT_URL,
 }

@@ -4,8 +4,7 @@
 
     [default.backend]
         BASE_URL = "http://backend:8000"
-        ADMIN_EMAIL = "admin@example.com"
-        ADMIN_PASSWORD = "admin123"
+        SERVICE_API_KEY = ""
 
     [default.features]
         ENABLE_NATS = true
@@ -31,8 +30,7 @@
 
     [development.backend]
         BASE_URL = "http://backend:8000"
-        ADMIN_EMAIL = "admin@example.com"
-        ADMIN_PASSWORD = "admin123"
+        SERVICE_API_KEY = ""
 
     [development.logs]
         LEVEL_NAME = "DEBUG"
@@ -48,9 +46,9 @@
         AI_BASE_URL = "https://api.fireworks.ai/inference/v1"
         AI_MODEL = "accounts/fireworks/models/deepseek-r1"
         # Optional: links for "Мои суды" -> chat redirects
-        COURTS_OPENED_CHAT_URL = "https://t.me/Sharia_Men_Chat"
-        COURTS_CLOSED_CHAT_URL = "https://t.me/Sharia_Men_Chat"
-        COURTS_IN_PROGRESS_CHAT_URL = "https://t.me/Sharia_Men_Chat"
+        COURTS_OPENED_CHAT_URL = "https://t.me/Ummanetwork"
+        COURTS_CLOSED_CHAT_URL = "https://t.me/Ummanetwork"
+        COURTS_IN_PROGRESS_CHAT_URL = "https://t.me/Ummanetwork"
         SHARIAH_TOP_COUNTRIES = [
             "Россия",
             "Казахстан",

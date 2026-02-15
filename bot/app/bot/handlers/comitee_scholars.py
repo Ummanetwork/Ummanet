@@ -20,6 +20,7 @@ from app.infrastructure.database.models.user import UserModel
 from app.services.ai.fireworks import generate_ai_response
 from app.services.i18n.localization import get_text, resolve_language
 from config.config import settings
+from shared.link_slots import DEFAULT_COMMUNITY_SUPPORT_URL, DEFAULT_MATERIALS_URL
 
 from .comitee_common import scholars_group_id, user_language
 from .comitee_menu import MAIN_MENU_KEYS, MenuKeyFilter
@@ -54,13 +55,13 @@ def _build_ai_followup_keyboard(lang_code: str, user_id: int) -> InlineKeyboardM
             [
                 InlineKeyboardButton(
                     text=get_text("button.community.support", lang_code),
-                    url="https://t.me/+GLVL7Yi7OBszMmE8",
+                    url=DEFAULT_COMMUNITY_SUPPORT_URL,
                 )
             ],
             [
                 InlineKeyboardButton(
                     text=get_text("button.materials", lang_code),
-                    url="https://t.me/Sharia_Men_Chat",
+                    url=DEFAULT_MATERIALS_URL,
                 )
             ],
         ]

@@ -1,4 +1,4 @@
-start-hello = Hello, { $username }!
+﻿start-hello = Hello, { $username }!
               {""}
 
 bot-desription = Under development.
@@ -39,19 +39,19 @@ task-soon = The task will be completed soon!
 
 periodic-task = This is a dynamically scheduled periodic task
 
-no-periodic-tasks = Периодические задачи отсутствуют в расписании
+no-periodic-tasks = РџРµСЂРёРѕРґРёС‡РµСЃРєРёРµ Р·Р°РґР°С‡Рё РѕС‚СЃСѓС‚СЃС‚РІСѓСЋС‚ РІ СЂР°СЃРїРёСЃР°РЅРёРё
 
-periodic-tasks-deleted = Периодические задачи успешно удалены!
+periodic-tasks-deleted = РџРµСЂРёРѕРґРёС‡РµСЃРєРёРµ Р·Р°РґР°С‡Рё СѓСЃРїРµС€РЅРѕ СѓРґР°Р»РµРЅС‹!
 
 about-author = About author
 
-about-author-link = https://t.me/toBeAnMLspecialist/935
+about-author-link = https://github.com/Ummanetwork/Ummanet
 
-free-course = 🤖 Free course on bots
+free-course = рџ¤– Free course on bots
 
 free-course-link = https://stepik.org/course/120924
 
-advanced-course = 🚀 Advanced course on bots
+advanced-course = рџљЂ Advanced course on bots
 
 advanced-course-link = https://stepik.org/a/153850
 
@@ -59,23 +59,23 @@ mlpodcast = Machine Learning Podcast
 
 mlpodcast-link = https://mlpodcast.mave.digital/
 
-back-button = ◀️ Back
+back-button = в—ЂпёЏ Back
 
-save-button = ✅ Save
+save-button = вњ… Save
 
 set-lang-menu = <b>Please select the language of the bot interface</b>
 
-                The 🇬🇧 <b>English</b> language is selected
+                The рџ‡¬рџ‡§ <b>English</b> language is selected
 
-ru-lang = 🇷🇺 Russian
+ru-lang = рџ‡·рџ‡є Russian
 
-en-lang = 🇬🇧 English
+en-lang = рџ‡¬рџ‡§ English
 
-fr-lang = 🇫🇷 Franch
+fr-lang = рџ‡«рџ‡· Franch
 
-de-lang = 🇩🇪 German
+de-lang = рџ‡©рџ‡Є German
 
-lang-saved = ✅ The language settings have been saved successfully!
+lang-saved = вњ… The language settings have been saved successfully!
 
 start-command-description = Restart the bot
 

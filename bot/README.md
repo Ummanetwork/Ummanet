@@ -1,7 +1,7 @@
 
-# Aiogram 3 Bot Template
+# Ummanet Telegram Bot
 
-This is a template for telegram bots written in python using the `aiogram` framework
+Telegram bot service of the Ummanet project, written in Python with `aiogram`.
 
 
 You can learn how to develop telegram bots using the `aiogram` framework in the following courses (in Russian):
@@ -148,11 +148,11 @@ You can learn how to develop telegram bots using the `aiogram` framework in the 
 1. Clone the repository to your local machine via HTTPS:
 
 ```bash
-git clone https://github.com/kmsint/aiogram_bot_template.git
+git clone https://github.com/Ummanetwork/Ummanet.git
 ```
 or via SSH:
 ```bash
-git clone git@github.com:kmsint/aiogram_bot_template.git
+git clone git@github.com:Ummanetwork/Ummanet.git
 ```
 
 2. Create a `docker-compose.yml` file in the root of the project and copy the code from the `docker-compose.example` file into it.

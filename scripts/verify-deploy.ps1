@@ -12,7 +12,7 @@ param(
 
     [int]$Port = 22,
 
-    [string]$RemoteCompose = "/opt/tg-bot/compose.yaml",
+    [string]$RemoteCompose = "/opt/project/docker-compose.yml",
 
     [string]$NginxService = "nginx",
 

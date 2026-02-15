@@ -383,7 +383,7 @@ comitee.py
 Импортируется AsyncOpenAI и создаётся клиент:
 client = AsyncOpenAI(
     base_url="https://api.fireworks.ai/inference/v1",
-    api_key="fw_3ZPiXE5jvY1SpDoz1GdZNnrt"
+    api_key="fw_REDACTED"
 )
 Функция ai_generate(text: str) вызывает client.chat.completions.create с моделью accounts/fireworks/models/deepseek-r1, затем чистит теги <think>…</think>.
 То есть весь вызов ИИ сосредоточен в ai_generate данного файла, включая жёстко прописанный Fireworks API ключ и URL.
@@ -405,7 +405,7 @@ client = AsyncOpenAI(
 
 Открой bot/.env (или файлы секретов в окружении деплоя) и добавь строку
 
-AI_API_KEY=fw_3ZPiXE5jvY1SpDoz1GdZNnrt
+AI_API_KEY=fw_REDACTED
 при желании туда же пропиши AI_BASE_URL=https://api.fireworks.ai/inference/v1 и AI_MODEL=accounts/fireworks/models/deepseek-r1, чтобы явно зафиксировать параметры.
 
 Перезапусти сервис бота (docker compose up -d --build bot или аналогичный способ). После рестарта при нажатии кнопки «Спросить у ИИ» бот начнёт использовать Fireworks и подкидывать ответы без заглушек.
@@ -424,7 +424,7 @@ nano bot/.env
 либо
 nano .env
 — зависит от того, где именно у тебя лежит файл с переменными. Найди блок с AI_* и введи:
-AI_API_KEY=fw_3ZPiXE5jvY1SpDoz1GdZNnrt
+AI_API_KEY=fw_REDACTED
 AI_BASE_URL=https://api.fireworks.ai/inference/v1
 AI_MODEL=accounts/fireworks/models/deepseek-r1
 (Если AI_BASE_URL и AI_MODEL уже есть в конфиге, просто проверь их значения.)
@@ -439,7 +439,7 @@ docker compose up -d --build bot
 
 В рабочем .env (а не в .env.example) действительно ничего не было. Я добавил туда необходимые строки:
 
-AI_API_KEY=fw_3ZPiXE5jvY1SpDoz1GdZNnrt
+AI_API_KEY=fw_REDACTED
 AI_BASE_URL=https://api.fireworks.ai/inference/v1
 AI_MODEL=accounts/fireworks/models/deepseek-r1
 Теперь файл bot/.env содержит все параметры. Осталось перезапустить процесс бота/контейнер, чтобы он подтянул обновлённые значения. (Шаблон .env.example лучше оставить с пустым ключом или комментарием, чтобы секрет не попал в Git.)
@@ -549,7 +549,7 @@ fireworks.py
 Обновил клиент Fireworks: теперь при создании AsyncOpenAI мы передаём заголовок Fireworks-Account, если задан в настройках, и используем модель accounts/fireworks/models/deepseek-r1-0528 по умолчанию (bot/app/services/ai/fireworks.py:29, bot/app/services/ai/fireworks.py:53). Это устраняет 404 на chat/completions.
 Добавил новую переменную окружения AI_FIREWORKS_ACCOUNT и сменил дефолтную модель в шаблоне (bot/.env.example:34). На реальном сервере тоже дописал значения (AI_FIREWORKS_ACCOUNT=fireworks, AI_MODEL=…r1-0528, плюс актуальный API key).
 Убедитесь, что на dev‑сервере в .env бота теперь есть:
-AI_API_KEY=fw_3ZPiXE5jvY1SpDoz1GdZNnrt
+AI_API_KEY=fw_REDACTED
 AI_BASE_URL=https://api.fireworks.ai/inference/v1
 AI_MODEL=accounts/fireworks/models/deepseek-r1-0528
 AI_FIREWORKS_ACCOUNT=fireworks
@@ -600,7 +600,7 @@ settings.toml
 
 Обновить переменные в контейнере. Внутри работающего контейнера должны быть
 
-AI_API_KEY=fw_3ZPiXE5jvY1SpDoz1GdZNnrt
+AI_API_KEY=fw_REDACTED
 AI_BASE_URL=https://api.fireworks.ai/inference/v1
 AI_MODEL=accounts/fireworks/models/deepseek-r1-0528
 AI_FIREWORKS_ACCOUNT=fireworks
@@ -629,7 +629,7 @@ curl -s -X POST \
 
 В команде curl я использовал подстановку "$AI_API_KEY" — это обычная переменная окружения оболочки. Если перед запуском ничего не задавать, получится пустая строка. Поэтому на сервере нужно сначала выполнить, например:
 
-export AI_API_KEY=fw_3ZPiXE5jvY1SpDoz1GdZNnrt
+export AI_API_KEY=fw_REDACTED
 export AI_FIREWORKS_ACCOUNT=fireworks
 или вписать значения прямо в команду:
 
@@ -649,7 +649,7 @@ curl показал, что с тем же ключом и моделью accoun
 docker exec -it <имя_контейнера> printenv | grep AI_
 там должны быть
 
-AI_API_KEY=fw_3ZPiXE5jvY1SpDoz1GdZNnrt
+AI_API_KEY=fw_REDACTED
 AI_BASE_URL=https://api.fireworks.ai/inference/v1
 AI_MODEL=accounts/fireworks/models/deepseek-r1-0528
 AI_FIREWORKS_ACCOUNT=fireworks

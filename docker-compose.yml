@@ -11,7 +11,7 @@ services:
       - pgdata:/var/lib/postgresql/data
     networks: [shariat]
     ports:
-      - "15432:5432"
+      - "${POSTGRES_BIND_ADDR:-127.0.0.1}:15432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
       interval: 10s
@@ -24,23 +24,26 @@ services:
     restart: unless-stopped
     networks: [shariat]
     ports:
-      - "16379:6379"
+      - "${REDIS_BIND_ADDR:-127.0.0.1}:16379:6379"
 
   backend:
-    build:
-      context: .
-      dockerfile: backend/Dockerfile
+    image: ghcr.io/ummanetwork/shariat-backend:${IMAGE_TAG:-dev-latest}
     container_name: shariat_backend
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${BACKEND_BIND_ADDR:-127.0.0.1}:8000:8000"
     environment:
       - POSTGRES_DSN=postgresql+psycopg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-postgres}
-      - BACKEND_CORS_ORIGINS=["*"]
-      - BACKEND_ADMIN_EMAIL=admin@example.com
-      - BACKEND_ADMIN_USERNAME=vit
-      - BACKEND_ADMIN_PASSWORD=123456
-      - BACKEND_ADMIN_IDS=394244504
+      - BACKEND_CORS_ORIGINS=${BACKEND_CORS_ORIGINS:-[]}
+      - BACKEND_ADMIN_EMAIL=${BACKEND_ADMIN_EMAIL:-}
+      - BACKEND_ADMIN_USERNAME=${BACKEND_ADMIN_USERNAME:-admin}
+      - BACKEND_ADMIN_PASSWORD=${BACKEND_ADMIN_PASSWORD:?BACKEND_ADMIN_PASSWORD is required}
+      - BACKEND_ADMIN_IDS=${BACKEND_ADMIN_IDS:-}
+      - BACKEND_JWT_SECRET_KEY=${BACKEND_JWT_SECRET_KEY:?BACKEND_JWT_SECRET_KEY is required}
+      - BACKEND_SERVICE_API_KEY=${BACKEND_SERVICE_API_KEY:?BACKEND_SERVICE_API_KEY is required}
+      - BACKEND_SERVICE_ACCOUNT_USERNAME=${BACKEND_SERVICE_ACCOUNT_USERNAME:-bot_service}
+      - BACKEND_ENABLE_LEGACY_LOGIN=${BACKEND_ENABLE_LEGACY_LOGIN:-false}
+      - BACKEND_AUTO_REPAIR_TRANSLATIONS_ON_STARTUP=${BACKEND_AUTO_REPAIR_TRANSLATIONS_ON_STARTUP:-false}
       - BACKEND_OTP_BOT_TOKEN=${BOT_TOKEN}
       - BACKEND_DEFAULT_LANGUAGES=ru,en,ar,tr
       - BACKEND_DEFAULT_LANGUAGE=ru
@@ -52,11 +55,21 @@ services:
       postgres:
         condition: service_healthy
     networks: [shariat]
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
   bot:
-    build:
-      context: .
-      dockerfile: bot/Dockerfile
+    image: ghcr.io/ummanetwork/shariat-bot:${IMAGE_TAG:-dev-latest}
     container_name: shariat_bot
     restart: unless-stopped
     environment:
@@ -72,8 +85,7 @@ services:
       - POSTGRES_POOL_MAX_SIZE=12
       - POSTGRES_POOL_TIMEOUT=30
       - BACKEND__BASE_URL=http://backend:8000
-      - BACKEND__ADMIN_EMAIL=admin@example.com
-      - BACKEND__ADMIN_PASSWORD=123456
+      - BACKEND__SERVICE_API_KEY=${BACKEND_SERVICE_API_KEY:?BACKEND_SERVICE_API_KEY is required}
       - FEATURES__ENABLE_NATS=false
       - FEATURES__ENABLE_TASKIQ=false
       - REDIS_HOST=redis
@@ -95,6 +107,8 @@ services:
       - BOT_STALE_UPDATES_WARNING_SEC=900
       - BOT_USE_WEBHOOKS=false
     depends_on:
+      backend:
+        condition: service_healthy
       postgres:
         condition: service_healthy
       redis:
@@ -102,23 +116,43 @@ services:
     networks: [shariat]
 
   react-admin:
-    build: ./frontends/react-admin
+    image: ghcr.io/ummanetwork/shariat-react-admin:${IMAGE_TAG:-dev-latest}
     container_name: shariat_react_admin
     environment:
       - VITE_API_URL=/api
     networks: [shariat]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   vue-portal:
-    build: ./frontends/vue-portal
+    image: ghcr.io/ummanetwork/shariat-vue-portal:${IMAGE_TAG:-dev-latest}
     container_name: shariat_vue_portal
     environment:
       - VITE_API_URL=/api
     networks: [shariat]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   nginx:
-    image: ghcr.io/ummanetwork/shariat-nginx:dev-latest
+    image: ghcr.io/ummanetwork/shariat-nginx:${IMAGE_TAG:-dev-latest}
     restart: unless-stopped
-    depends_on: [backend, bot, react-admin, vue-portal]
+    depends_on:
+      backend:
+        condition: service_healthy
+      bot:
+        condition: service_started
+      react-admin:
+        condition: service_healthy
+      vue-portal:
+        condition: service_healthy
     ports:
       - "8081:80"
     networks: [shariat]

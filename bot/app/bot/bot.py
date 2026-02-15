@@ -241,21 +241,20 @@ async def main():
     backend_settings = getattr(settings, "backend", None)
     if backend_settings is not None:
         base_url = getattr(backend_settings, "base_url", None)
-        admin_email = getattr(backend_settings, "admin_email", None)
-        admin_password = getattr(backend_settings, "admin_password", None)
-        if base_url and admin_email and admin_password:
+        service_api_key = getattr(backend_settings, "service_api_key", None)
+        if base_url and service_api_key:
             try:
                 backend_client = BackendDocumentsClient(
                     base_url=base_url,
-                    admin_email=admin_email,
-                    admin_password=admin_password,
+                    service_api_key=service_api_key,
                 )
                 bot.backend_documents_client = backend_client  # type: ignore[attr-defined]
             except ValueError as exc:
                 logger.warning("Backend documents client disabled: %s", exc)
         else:
             logger.warning(
-                "Backend documents client disabled due to missing configuration."
+                "Backend documents client disabled due to missing configuration "
+                "(need backend.base_url and backend.service_api_key)."
             )
 
     translator_hub: TranslatorHub = create_translator_hub()

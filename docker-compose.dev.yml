@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: shariat-backend:dev
+
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    image: shariat-bot:dev
+
+  react-admin:
+    build:
+      context: ./frontends/react-admin
+      dockerfile: Dockerfile
+    image: shariat-react-admin:dev
+
+  vue-portal:
+    build:
+      context: ./frontends/vue-portal
+      dockerfile: Dockerfile
+    image: shariat-vue-portal:dev
+
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    image: shariat-nginx:dev

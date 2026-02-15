@@ -8,7 +8,8 @@ Shariat Bot — комплексный сервис для мусульманс�
 - `bot/` — Telegram‑бот: диалоги, регистрация, интеграция с ИИ (Fireworks).
 - `frontends/react-admin` и `frontends/vue-portal` — админ‑панель и портал.
 - `nginx/` — конфигурация edge‑прокси.
-- `docker-compose.yml` — оркестрация (PostgreSQL, Redis, приложения).
+- `docker-compose.yml` - prod orchestration (pull images from GHCR).
+- `docker-compose.dev.yml` - local dev override (build services from source).
 
 Поддерживаемые языки бота: ru, en, ar. В БД есть таблица `languages`, переводы, а у пользователя есть `language_id`.
 
@@ -26,7 +27,8 @@ Shariat Bot — комплексный сервис для мусульманс�
 - `POSTGRES_DB`/`POSTGRES_NAME`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD` — доступ к БД
 - `POSTGRES__HOST`, `POSTGRES__PORT` — nested‑настройки для Dynaconf
 - `REDIS_*` — хост/порт/креды Redis
-- `BACKEND__BASE_URL`, `BACKEND__ADMIN_EMAIL`, `BACKEND__ADMIN_PASSWORD` — доступ бота к admin API backend
+- `BACKEND__BASE_URL`, `BACKEND__SERVICE_API_KEY` - bot service access to backend API.
+- `BACKEND_ADMIN_PASSWORD`, `BACKEND_JWT_SECRET_KEY`, `BACKEND_SERVICE_API_KEY` - required backend secrets.
 - `AI_API_KEY`, `AI_BASE_URL`, `AI_MODEL`, `AI_FIREWORKS_ACCOUNT` — доступ к Fireworks
 
 ## Регистрация пользователей в боте
@@ -45,7 +47,7 @@ Shariat Bot — комплексный сервис для мусульманс�
 1) Добавьте шаг в `.github/workflows/dev-deploy.yml` в секцию SSH‑deploy после `up -d`:
 
 ```
-docker compose -f compose.yaml exec -T bot alembic upgrade head
+docker compose -f docker-compose.yml exec -T bot alembic upgrade head
 ```
 
 2) Если база уже содержит часть объектов (ошибки DuplicateTable/DuplicateColumn), просто повторный запуск пройдет успешно благодаря `IF NOT EXISTS`.
@@ -57,18 +59,18 @@ docker compose -f compose.yaml exec -T bot alembic upgrade head
 ## Ручной запуск миграций на dev‑сервере
 
 ```
-ssh ssh vpsShariat
+ssh vpsShariat
 cd /opt/project
-docker compose -f compose.yaml exec -T bot alembic upgrade head
+docker compose -f docker-compose.yml exec -T bot alembic upgrade head
 ```
 
 Проверка наличия таблиц/колонок:
 
 ```
-docker compose -f compose.yaml exec -T postgres \
+docker compose -f docker-compose.yml exec -T postgres \
   psql -U postgres -d postgres -c "SELECT to_regclass('public.languages'), to_regclass('public.translation_keys'), to_regclass('public.translations');"
 
-docker compose -f compose.yaml exec -T postgres \
+docker compose -f docker-compose.yml exec -T postgres \
   psql -U postgres -d postgres -c "SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name in ('language_id','email_verified','phone_verified','full_name','email','phone_number');"
 ```
 

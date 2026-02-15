@@ -1,11 +1,11 @@
 #requires -version 5.1
 param(
     # Project root (defaults to the script folder)
-    [string]$ProjectDir = $(if ($PSScriptRoot) { $PSScriptRoot } else { "F:\WORK\Python\shariat-from-template" }),
+    [string]$ProjectDir = $(if ($PSScriptRoot) { $PSScriptRoot } else { "." }),
     # Archive name in the project root
-    [string]$ZipName    = "shariat-from-template.zip",
+    [string]$ZipName    = "ummanet-backup.zip",
     # Backup destination
-    [string]$BackupDir  = "F:\Work\Backups"
+    [string]$BackupDir  = (Join-Path $env:USERPROFILE "Backups\Ummanet")
 )
 
 $ErrorActionPreference = "Stop"

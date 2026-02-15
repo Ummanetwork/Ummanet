@@ -88,8 +88,8 @@ def _parse_int_list(value: Any) -> List[int]:
 
 
 class Settings(BaseSettings):
-    admin_email: str = "admin@example.com"
-    admin_password: str = "admin123"
+    admin_email: str | None = None
+    admin_password: str | None = None
     admin_username: str = "admin"
     jwt_secret_key: str = "change-me"
     jwt_algorithm: str = "HS256"
@@ -109,6 +109,14 @@ class Settings(BaseSettings):
     otp_bot_token: str | None = None
     otp_code_ttl_seconds: int = 300
     otp_max_attempts: int = 5
+    # CORS allow-list. Keep empty to disable cross-origin browser access.
+    cors_origins: Any = []
+    # Service-to-service auth used by bot/backend integration.
+    service_api_key: str | None = None
+    service_account_username: str = "bot_service"
+    # Security/maintenance switches.
+    enable_legacy_login: bool = False
+    auto_repair_translations_on_startup: bool = False
 
     @field_validator("default_languages", mode="before")
     @classmethod
@@ -134,12 +142,33 @@ class Settings(BaseSettings):
         text = _unwrap_singleton_brackets(str(value)).strip()
         return text or "en"
 
-    @field_validator("admin_email", "admin_username", "admin_password", mode="before")
+    @field_validator("admin_email", "admin_username", "service_account_username", mode="before")
     @classmethod
     def _normalize_scalar_settings(cls, value: Any) -> str:
         if value is None:
             return ""
         return _unwrap_singleton_brackets(str(value))
+
+    @field_validator("admin_password", mode="before")
+    @classmethod
+    def _normalize_admin_password(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = _unwrap_singleton_brackets(str(value))
+        return text or None
+
+    @field_validator("service_api_key", mode="before")
+    @classmethod
+    def _normalize_service_api_key(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        text = _unwrap_singleton_brackets(str(value))
+        return text or None
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def _split_cors_origins(cls, value: Any) -> List[str]:
+        return _parse_string_list(value)
 
     @field_validator("otp_bot_token", mode="before")
     @classmethod

@@ -34,10 +34,12 @@ coverage.xml
 # Environment files
 .env
 .env.*
+.env*
 !.env.example
 
 # Logs and databases
 *.log
+logs/
 *.sqlite3
 *.db
 
